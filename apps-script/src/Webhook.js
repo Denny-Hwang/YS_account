@@ -68,6 +68,11 @@ function doPost(e) {
     }
 
     if (message) {
+      if (message.photo || (message.document && /^image\//.test(String(message.document.mime_type || '')))) {
+        var photoLogRow = logEvent(userId, '[사진]', '', '수신', updateId);
+        handleReceipt(message.chat.id, userId, message, photoLogRow);
+        return ContentService.createTextOutput('ok');
+      }
       var text = message.text || '';
       var logRow = logEvent(userId, text, '', '수신', updateId);
       handleMessage(message.chat.id, userId, text, message.message_id, logRow);
@@ -183,7 +188,11 @@ function handleRecord(chatId, userId, parsed, messageId, logRow) {
   if (!cls) {
     var pendingKey = String(chatId) + ':' + String(messageId || Date.now());
     CacheService.getScriptCache().put(pendingKey, JSON.stringify(parsed), PENDING_TTL_SECONDS);
-    var choices = getConfigList('envelopes').concat(['고정비', '수입']);
+    var choices = orderChoicesWithSuggestion(
+      getConfigList('envelopes').concat(['고정비', '수입']),
+      parsed.merchantTextRaw || parsed.merchantText,
+      merchants
+    );
     safeSend(
       chatId,
       '분류를 골라주세요: ' + (parsed.merchantTextRaw || '(가맹점 없음)') + ' ' +
@@ -295,6 +304,23 @@ function handleCallback(cq) {
   }
 
   safeAnswer(cq.id);
+}
+
+/**
+ * 분류 보조가 켜져 있으면 추천 봉투를 버튼 맨 앞으로 올린다.
+ * 추천일 뿐이다. 기록은 사용자가 버튼을 눌러야 일어난다(Golden Rule 2).
+ */
+function orderChoicesWithSuggestion(choices, merchantText, merchants) {
+  var suggestion = null;
+  try {
+    suggestion = suggestEnvelope(merchantText, choices, merchants);
+  } catch (err) {
+    logEvent('', 'llm', '', '추천 실패: ' + err);
+  }
+  if (!suggestion) {
+    return choices;
+  }
+  return [suggestion].concat(choices.filter(function (c) { return c !== suggestion; }));
 }
 
 /** 버튼 선택값을 분류 객체로 바꾼다. */
