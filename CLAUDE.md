@@ -35,4 +35,8 @@ STATUS.md 의 "다음 할 일" 항목부터 시작한다.
 ## 검증
 - 순수 모듈 변경 시 반드시 `cd apps-script && npm test` 통과.
 - GAS 전용 파일은 `node --check` 로 문법만 확인.
-- 비밀값 유출 점검: `git grep -nE "[0-9]{9,10}:[A-Za-z0-9_-]{35}|AKfycb|1[A-Za-z0-9_-]{40,}"` 결과가 비어야 한다.
+- 비밀값 유출 점검: 아래 결과가 비어야 한다. 잠금 파일의 무결성 해시는 오탐이라 제외한다.
+  ```
+  git grep -nE "[0-9]{9,10}:[A-Za-z0-9_-]{35}|AKfycb|1[A-Za-z0-9_-]{40,}" \
+    -- ':!*package-lock.json' ':!CLAUDE.md' ':!docs/SETUP.md' ':!claude/prompts/*'
+  ```
