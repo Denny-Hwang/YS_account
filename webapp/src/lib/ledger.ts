@@ -112,6 +112,47 @@ export function nowIso(): string {
   return new Date().toISOString()
 }
 
+/** 아무 탭에나 한 행을 추가한다. 헤더 순서는 시트에서 읽는다. */
+export async function appendTo(
+  ctx: SheetsContext,
+  workbook: Workbook,
+  tab: string,
+  row: Record<string, unknown>
+): Promise<void> {
+  await appendValues(ctx, tab, rowToValues(workbook.tables[tab].headers, row))
+}
+
+/** 아무 탭의 한 행을 부분 수정한다. */
+export async function patchIn(
+  ctx: SheetsContext,
+  workbook: Workbook,
+  tab: string,
+  target: SheetRow,
+  patch: Record<string, unknown>
+): Promise<void> {
+  const headers = workbook.tables[tab].headers
+  const merged: Record<string, unknown> = { ...target, ...patch }
+  if (headers.includes('updated_at')) merged.updated_at = nowIso()
+  await updateRow(ctx, tab, target._row, rowToValues(headers, merged))
+}
+
+/** 최신 스냅샷 날짜의 자산 합계(USD 환산). */
+export function latestAssetsTotal(workbook: Workbook): { date: string; total: number } {
+  const dates = workbook.assets
+    .map((row) => String(row.snapshot_date).slice(0, 10))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+  if (dates.length === 0) return { date: '', total: 0 }
+  const latest = dates.sort().reverse()[0]
+  const fx = configNumber(workbook.config, 'fx_usd_krw', 1332)
+  const total = workbook.assets
+    .filter((row) => String(row.snapshot_date).slice(0, 10) === latest)
+    .reduce((acc, row) => {
+      const balance = Number(row.balance) || 0
+      return acc + (String(row.currency).trim().toUpperCase() === 'KRW' ? balance / fx : balance)
+    }, 0)
+  return { date: latest, total: Math.round(total * 100) / 100 }
+}
+
 /** 원장에 한 행을 추가한다. */
 export async function appendTransaction(
   ctx: SheetsContext,
