@@ -1,10 +1,10 @@
 # STATUS.md — 진행 상태
 
 ## 현재 단계
-- **P2 완료** (2026-09-11): 순수 모듈 `src/{Parser,Classifier,Budget}.js` 와 단위 테스트 41개 통과.
+- **P3 완료** (2026-09-11): Telegram 웹훅. `src/{Telegram,Ledger,Webhook}.js`, `docs/SETUP.md` P3 절.
 
 ## 다음 할 일
-- **P3**: Telegram 웹훅 (`src/{Telegram,Webhook,Ledger}.js`), `docs/SETUP.md` P3 절.
+- **P4**: 고정비 자동 기장·아침 요약·월 마감 시간 트리거 (`src/{Recurring,Jobs}.js`).
 
 ## 완료 이력
 | 단계 | 커밋 | 날짜 |
@@ -12,6 +12,7 @@
 | P0 | P0: 저장소 뼈대와 설계 문서 | 2026-09-11 |
 | P1 | P1: 시트 스키마 setup 스크립트 | 2026-09-11 |
 | P2 | P2: 파서·분류·예산 순수 모듈과 테스트 | 2026-09-11 |
+| P3 | P3: Telegram 웹훅과 원장 기록 | 2026-09-11 |
 
 ## 미결 사항
 - `docs/decisions/ADR-0003-open-decisions.md` 참고: 봉투 구성, 월말 잔액 처리, 유류비 분류.

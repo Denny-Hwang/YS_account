@@ -55,3 +55,48 @@ Apps Script 편집기 → `프로젝트 설정` → `스크립트 속성` 에서
 4. `Recurring` 탭 → 시드된 9개 항목의 `expected_amount`, `due_day` 를 실제 값으로 수정.
    `R08 십일조` 는 `income_pct:7` 규칙이라 금액을 비워 둔다. `R09 부채상환` 금액도 직접 입력한다.
 5. `Config.envelopes` 를 바꿨다면 `setupSheet` 을 한 번 더 실행해 드롭다운을 갱신한다.
+
+---
+
+## P3 — Telegram 웹훅 연결
+
+### a. 웹 앱 배포
+Apps Script 편집기 → 우상단 `배포` → `새 배포` → 유형 `웹 앱`
+
+| 항목 | 값 |
+|---|---|
+| 설명 | family-budget webhook |
+| 실행 사용자 | **나** (본인 계정) |
+| 액세스 권한 | **모든 사용자** |
+
+배포하면 `https://script.google.com/macros/s/AKfycb.../exec` 형태의 URL 이 나온다.
+이 URL 을 Script Properties 의 `WEBAPP_URL` 에 저장한다. **URL 자체가 비밀값이다.**
+
+> 코드를 수정할 때마다 `배포 관리` → 기존 배포의 연필 아이콘 → 버전 `새 버전` 으로 갱신해야
+> 웹훅 URL 이 그대로 유지된다. `새 배포` 를 다시 만들면 URL 이 바뀌므로 `setWebhook` 을 다시 실행해야 한다.
+
+### b. 사람 이름 매핑 (선택)
+`Config` 탭에 `name_<telegram_id>` 키를 추가하면 원장의 `payer` 열에 그 이름이 들어간다.
+예: key `name_11111111`, value `성주`. 없으면 숫자 ID 가 그대로 들어간다.
+
+### c. 웹훅 등록
+편집기에서 `setWebhook` 함수를 실행한다.
+`WEBAPP_URL` 과 `WEBHOOK_SECRET` 을 읽어 `<WEBAPP_URL>?token=<WEBHOOK_SECRET>` 으로 등록한다.
+실행 로그에 "웹훅 등록 완료" 가 찍히면 성공이다. 실패하면 `Log` 탭을 본다.
+해제는 `deleteWebhook` 이다.
+
+### d. 동작 확인
+1. 봇에게 `코스트코 1.00` 을 보낸다.
+   - `Transactions` 탭에 `status=active`, `envelope=식료품` 행이 생긴다.
+   - `Log` 탭에 원문과 파싱 결과가 남는다.
+   - 봇이 `식료품 잔액 ... · 남은 N일 × $.../일 · 계획 대비 ...` 로 회신한다.
+2. 봇에게 `취소` 를 보낸다. 방금 행의 `status` 가 `deleted` 로 바뀌고 회신이 온다.
+   행이 사라지지 않는 것이 정상이다(append-only + soft delete).
+3. 사전에 없는 가맹점(`처음가게 5`)을 보내면 봉투 선택 버튼이 온다.
+   버튼을 누르면 `Merchants` 에 학습되고 원장에 기록된다.
+4. `얼마 남았어` 를 보내면 봉투별 상태가 한 줄씩 온다.
+
+### 문제가 생기면
+- 봇이 아무 반응이 없다 → `Log` 탭 확인. 비어 있으면 token 불일치이거나 `allowed_telegram_ids` 누락이다.
+- `Config.allowed_telegram_ids` 에 본인 ID 가 콤마로 정확히 들어갔는지 확인한다(공백 무방).
+- Config 값은 5분 캐시된다. 바꾼 직후라면 잠시 기다리거나 `clearConfigCache` 를 실행한다.
