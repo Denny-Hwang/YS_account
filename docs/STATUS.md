@@ -27,6 +27,7 @@
 | P5 | P5: Monthly_View 와 Dashboard 수식 | 2026-09-11 |
 | P3.1 | P3.1: Telegram update_id 멱등 처리 | 2026-09-11 |
 | P6 | P6: 기존 월별 탭 이관 스크립트 | 2026-09-11 |
+| P7 | P7: 웹앱 MVP | 2026-09-11 |
 
 ## 미결 사항
 - `docs/decisions/ADR-0003-open-decisions.md` 참고: 봉투 구성, 월말 잔액 처리, 유류비 분류.

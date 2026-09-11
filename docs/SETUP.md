@@ -216,3 +216,54 @@ columns: {
 - 날짜: `2025-01-05`, `2025/1/5`, `1/5`, `1월 5일`, `5`, `5일`. 셀이 날짜 값이면 시트 시간대로 먼저 변환한다.
 - 유형: 구분 열이 있으면 그 값으로, 없으면 음수를 수입으로 본다.
 - 봉투: 비어 있고 유동비 지출이면 `MIGRATION_MAP.defaults.defaultEnvelope` 로 채운다.
+
+---
+
+## P7 — 웹앱 (GitHub Pages)
+
+웹앱은 별도 서버가 없다. 브라우저가 구글 계정으로 로그인해 Sheets API 로 시트를 직접 읽고 쓴다.
+**시트 공유 권한이 곧 접근 권한이다.** 시트에 편집자로 공유된 계정만 데이터를 볼 수 있다.
+
+### a. Google Cloud 준비
+1. [Google Cloud 콘솔](https://console.cloud.google.com/)에서 프로젝트를 하나 만든다(기존 것 재사용 가능).
+2. `API 및 서비스 → 라이브러리` 에서 **Google Sheets API** 를 사용 설정한다.
+3. `OAuth 동의 화면` 을 만든다. 사용자 유형은 **외부**, 게시 상태는 **테스트** 로 두고
+   테스트 사용자에 두 사람의 구글 계정을 추가한다. 범위는 따로 추가하지 않아도 된다.
+4. `사용자 인증 정보 → 사용자 인증 정보 만들기 → OAuth 클라이언트 ID` 에서 유형을 **웹 애플리케이션** 으로 고른다.
+5. **승인된 JavaScript 원본** 에 아래를 넣는다. 리디렉션 URI 는 비워 둔다.
+   - `https://denny-hwang.github.io` (GitHub Pages 주소의 도메인 부분만)
+   - `http://localhost:5173` (로컬 개발용)
+6. 만들어진 클라이언트 ID 를 적어 둔다. 이 값은 비밀이 아니다(브라우저에 그대로 노출된다).
+
+### b. GitHub Pages 켜기
+1. 저장소 `Settings → Pages → Build and deployment → Source` 를 **GitHub Actions** 로 바꾼다.
+2. `main` 에 `webapp/` 변경이 올라가면 `.github/workflows/deploy-webapp.yml` 이 자동으로 배포한다.
+   수동 실행은 `Actions → 웹앱 GitHub Pages 배포 → Run workflow`.
+3. (선택) `Settings → Secrets and variables → Actions → Variables` 에 `GOOGLE_CLIENT_ID` 를 넣으면
+   앱이 클라이언트 ID 를 미리 채운다. 넣지 않아도 앱의 설정 화면에서 입력하면 된다.
+
+배포 주소는 `https://denny-hwang.github.io/YS_account/` 다.
+
+### c. 앱 첫 실행
+1. 위 주소를 연다. 설정 화면이 먼저 나온다.
+2. **OAuth 클라이언트 ID** 와 **스프레드시트 주소**(전체 URL 을 붙여 넣어도 된다)를 입력하고 저장한다.
+3. `구글 계정으로 연결` 을 누르고 동의한다.
+4. 홈 화면에 추가하면 앱처럼 쓸 수 있다(PWA).
+
+> 두 값은 이 기기의 `localStorage` 에만 저장된다. 저장소에도, 빌드 결과물에도 들어가지 않는다.
+> 기기를 바꾸면 다시 입력해야 한다. 이것이 Golden Rule 1 을 지키는 방식이다.
+
+### d. 로컬 개발
+```bash
+cd webapp
+npm install
+npm run dev       # http://localhost:5173
+npm test          # 공유 모듈 브리지 테스트
+npm run build     # 타입 검사 + 프로덕션 빌드
+```
+
+### 화면
+- **오늘**: 봉투별 오늘 쓸 수 있는 금액, 잔액, 계획 대비 차이. 맨 위 빠른 입력은 봇과 같은 파서를 쓴다.
+- **원장**: 월별 목록. 항목을 누르면 날짜·금액·통화·유형·봉투·카테고리·메모를 고칠 수 있다.
+  삭제는 행을 지우지 않고 `status` 를 `deleted` 로 바꾼다. 되살리기도 된다.
+- **설정**: 연결 값 입력과 로그아웃.
