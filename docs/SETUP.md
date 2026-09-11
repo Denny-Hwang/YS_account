@@ -100,3 +100,34 @@ Apps Script 편집기 → 우상단 `배포` → `새 배포` → 유형 `웹 �
 - 봇이 아무 반응이 없다 → `Log` 탭 확인. 비어 있으면 token 불일치이거나 `allowed_telegram_ids` 누락이다.
 - `Config.allowed_telegram_ids` 에 본인 ID 가 콤마로 정확히 들어갔는지 확인한다(공백 무방).
 - Config 값은 5분 캐시된다. 바꾼 직후라면 잠시 기다리거나 `clearConfigCache` 를 실행한다.
+
+---
+
+## P4 — 시간 트리거 설치
+
+### a. 트리거 설치
+편집기에서 `installTriggers` 를 실행한다. 기존 트리거를 모두 지우고 세 개를 새로 등록한다(멱등).
+
+| 함수 | 주기 | 하는 일 |
+|---|---|---|
+| `dailySummary` | 매일 `Config.daily_summary_hour` 시 | 어제 유동비 합, 봉투별 상태, 오늘 결제일인 고정비 안내 |
+| `monthlyOpen` | 매월 `Config.month_start_day` 일 06시 | 예산 시드(전월 복사 + carry 이월), 고정비 expected 생성, 요약 |
+| `monthlyClose` | 매일 21시 | **말일에만** 동작. 봉투 결산, 고정비 편차, 미확인 고정비 보고 |
+
+> `monthlyClose` 를 매일 21시로 두고 말일 여부를 코드에서 판정한다.
+> 달마다 말일이 28/29/30/31 로 달라지는데 Apps Script 의 월간 트리거는 고정된 날짜만 받기 때문이다.
+> 말일이 아닌 날에는 아무 메시지도 보내지 않는다.
+
+편집기 좌측 `트리거` 화면에서 세 개가 보이는지 확인한다.
+
+### b. 동작 확인
+1. `dailySummary` 를 수동 실행한다. 봇이 `allowed_telegram_ids` 전원에게 요약 메시지를 보낸다.
+2. `postMonthlyRecurring` 을 수동 실행한다. `Transactions` 에 `status=expected`, `source=recurring` 인
+   고정비 행이 생긴다. 한 번 더 실행해도 행이 늘지 않아야 한다(멱등).
+3. 봇에게 `관리비 212` 를 보낸다. 위 expected 행이 `confirmed` 로 바뀌고 금액이 212 로 덮어써진다.
+   새 행이 생기지 않는 것이 정상이다.
+4. `monthlyClose` 는 말일이 아니면 빈 문자열을 돌려주고 아무것도 보내지 않는다.
+
+### c. 권한
+트리거가 처음 돌 때 실행 계정의 권한으로 동작한다. 실행 기록은 편집기 `실행` 화면에서 볼 수 있고,
+Telegram 호출 실패는 `Log` 탭에 남는다.

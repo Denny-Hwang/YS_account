@@ -135,6 +135,7 @@ function handleRecord(chatId, userId, parsed, messageId, logRow) {
 
   bumpMerchant(String(cls.keyword));
   var result = recordTransaction(parsed, cls, { userId: userId, source: 'telegram' });
+  if (result.type === 'income') { recomputeIncomePct(parsed.date.slice(0, 7)); }
   var reply = buildRecordReply(parsed, result);
   if (parsed.confidence === 'low') {
     sendMessage(chatId, reply + ' (확인 필요)', buildDeleteKeyboard(result.txId));
@@ -211,6 +212,7 @@ function handleCallback(cq) {
     var cls = buildClassFromChoice(choice, parsed);
     learnMerchant(parsed.merchantTextRaw || parsed.merchantText, cls);
     var result = recordTransaction(parsed, cls, { userId: userId, source: 'telegram' });
+    if (result.type === 'income') { recomputeIncomePct(parsed.date.slice(0, 7)); }
     CacheService.getScriptCache().remove(pendingKey);
     if (chatId) {
       editMessageText(chatId, messageId, buildRecordReply(parsed, result));
