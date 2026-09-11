@@ -1,15 +1,16 @@
 # STATUS.md — 진행 상태
 
 ## 현재 단계
-- **P0 완료** (2026-09-11): 저장소 뼈대, CLAUDE.md, .gitignore, ARCHITECTURE.md, SHEET_SCHEMA.md, ADR-0001~0003, resume.md, claude/prompts/P0.md.
+- **P1 완료** (2026-09-11): 시트 스키마 생성 스크립트. `appsscript.json`, `.clasp.json.example`, `package.json`, `src/{Config,Sheet,Setup}.js`, `docs/SETUP.md`.
 
 ## 다음 할 일
-- **P1**: 시트 스키마 생성 스크립트 (`apps-script/src/{Config,Setup,Sheet}.js`, `appsscript.json`, `.clasp.json.example`, `package.json`, `docs/SETUP.md`). 프롬프트는 사용자가 제공한 P1 원문을 `claude/prompts/P1.md` 로 저장하며 시작한다.
+- **P2**: 파서·분류·예산 계산 순수 모듈과 Node 단위 테스트 (`src/{Parser,Classifier,Budget}.js`, `tests/*.test.js`).
 
 ## 완료 이력
 | 단계 | 커밋 | 날짜 |
 |---|---|---|
 | P0 | P0: 저장소 뼈대와 설계 문서 | 2026-09-11 |
+| P1 | P1: 시트 스키마 setup 스크립트 | 2026-09-11 |
 
 ## 미결 사항
 - `docs/decisions/ADR-0003-open-decisions.md` 참고: 봉투 구성, 월말 잔액 처리, 유류비 분류.
