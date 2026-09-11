@@ -1,16 +1,17 @@
 # STATUS.md — 진행 상태
 
 ## 현재 단계
-- **P1 완료** (2026-09-11): 시트 스키마 생성 스크립트. `appsscript.json`, `.clasp.json.example`, `package.json`, `src/{Config,Sheet,Setup}.js`, `docs/SETUP.md`.
+- **P2 완료** (2026-09-11): 순수 모듈 `src/{Parser,Classifier,Budget}.js` 와 단위 테스트 41개 통과.
 
 ## 다음 할 일
-- **P2**: 파서·분류·예산 계산 순수 모듈과 Node 단위 테스트 (`src/{Parser,Classifier,Budget}.js`, `tests/*.test.js`).
+- **P3**: Telegram 웹훅 (`src/{Telegram,Webhook,Ledger}.js`), `docs/SETUP.md` P3 절.
 
 ## 완료 이력
 | 단계 | 커밋 | 날짜 |
 |---|---|---|
 | P0 | P0: 저장소 뼈대와 설계 문서 | 2026-09-11 |
 | P1 | P1: 시트 스키마 setup 스크립트 | 2026-09-11 |
+| P2 | P2: 파서·분류·예산 순수 모듈과 테스트 | 2026-09-11 |
 
 ## 미결 사항
 - `docs/decisions/ADR-0003-open-decisions.md` 참고: 봉투 구성, 월말 잔액 처리, 유류비 분류.

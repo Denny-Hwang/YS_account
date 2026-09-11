@@ -4,6 +4,6 @@
   "private": true,
   "description": "가계부 Apps Script 순수 모듈 테스트 러너",
   "scripts": {
-    "test": "node --test tests/"
+    "test": "node --test \"tests/*.test.js\""
   }
 }
