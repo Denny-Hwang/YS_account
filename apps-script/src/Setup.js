@@ -70,6 +70,37 @@ var MERCHANTS_SEED = [
 ];
 
 /**
+ * 실제 헤더가 기대 헤더의 앞부분과 정확히 같고, 뒤쪽 열만 모자란지 확인한다.
+ * @param {!Array<string>} actual
+ * @param {!Array<string>} expected
+ * @return {boolean}
+ */
+function isHeaderPrefix(actual, expected) {
+  if (actual.length >= expected.length) {
+    return false;
+  }
+  for (var i = 0; i < actual.length; i++) {
+    if (actual[i] !== expected[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** 모자란 뒤쪽 헤더를 마지막 열 뒤에 붙인다. 기존 데이터는 건드리지 않는다. */
+function appendMissingHeaders(sheet, existingCount, headers) {
+  var missing = headers.slice(existingCount);
+  if (missing.length === 0) {
+    return 0;
+  }
+  if (sheet.getMaxColumns() < headers.length) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
+  }
+  sheet.getRange(1, existingCount + 1, 1, missing.length).setValues([missing]);
+  return missing.length;
+}
+
+/**
  * 없는 탭은 만들고, 있는 탭은 헤더만 검증한다.
  * 헤더가 다르면 throw 하고 데이터는 건드리지 않는다.
  */
@@ -93,10 +124,16 @@ function setupSheet() {
         .filter(function (h) { return h !== ''; });
       var expected = spec.headers.join('|');
       if (actual.join('|') !== expected) {
-        throw new Error(
-          '탭 "' + spec.name + '" 헤더 불일치.\n기대: ' + expected + '\n실제: ' + actual.join('|') +
-          '\n데이터는 변경하지 않았습니다. 헤더를 수동으로 맞춘 뒤 다시 실행하세요.'
-        );
+        // extendable 탭(Log)은 뒤에 열이 추가된 경우에 한해 헤더를 이어붙인다.
+        // 다른 탭은 종전대로 throw 하고 데이터를 건드리지 않는다.
+        if (spec.extendable && isHeaderPrefix(actual, spec.headers)) {
+          appendMissingHeaders(sheet, actual.length, spec.headers);
+        } else {
+          throw new Error(
+            '탭 "' + spec.name + '" 헤더 불일치.\n기대: ' + expected + '\n실제: ' + actual.join('|') +
+            '\n데이터는 변경하지 않았습니다. 헤더를 수동으로 맞춘 뒤 다시 실행하세요.'
+          );
+        }
       }
     }
     sheet.setFrozenRows(1);

@@ -142,8 +142,13 @@
 | raw_text | 원문 |
 | parsed_json | 파서 결과 JSON |
 | result | 처리 결과 요약 |
+| update_id | Telegram update.update_id. 재전송 중복 판별에 쓴다 |
 
-헤더 순서: `timestamp, telegram_id, raw_text, parsed_json, result`
+헤더 순서: `timestamp, telegram_id, raw_text, parsed_json, result, update_id`
+
+`update_id` 는 나중에 추가된 열이라 `Log` 탭만 예외적으로 헤더 확장을 허용한다.
+기존 시트에 이 열이 없으면 `setupSheet()` 이 마지막 열 뒤에 붙인다(데이터는 건드리지 않는다).
+다른 탭은 헤더가 다르면 종전대로 오류를 낸다.
 
 ## Monthly_View, Dashboard
 

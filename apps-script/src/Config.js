@@ -57,7 +57,9 @@ var SHEETS = {
   },
   LOG: {
     name: 'Log',
-    headers: ['timestamp', 'telegram_id', 'raw_text', 'parsed_json', 'result']
+    // extendable: 기존 탭에 뒤쪽 열이 없으면 throw 하지 않고 이어붙인다(Log 전용).
+    extendable: true,
+    headers: ['timestamp', 'telegram_id', 'raw_text', 'parsed_json', 'result', 'update_id']
   },
   MONTHLY_VIEW: {
     name: 'Monthly_View',

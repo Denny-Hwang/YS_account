@@ -100,6 +100,7 @@ Apps Script 편집기 → 우상단 `배포` → `새 배포` → 유형 `웹 �
 - 봇이 아무 반응이 없다 → `Log` 탭 확인. 비어 있으면 token 불일치이거나 `allowed_telegram_ids` 누락이다.
 - `Config.allowed_telegram_ids` 에 본인 ID 가 콤마로 정확히 들어갔는지 확인한다(공백 무방).
 - Config 값은 5분 캐시된다. 바꾼 직후라면 잠시 기다리거나 `clearConfigCache` 를 실행한다.
+- 회신이 여러 번 오면 `getWebhookInfo` 를 실행해 `last_error_message` 를 확인한다.
 
 ---
 

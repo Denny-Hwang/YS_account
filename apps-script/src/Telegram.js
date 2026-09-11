@@ -10,7 +10,6 @@
  * @return {?Object} 응답 JSON. 실패 시 null.
  */
 function tg(method, payload) {
-  var url = 'https://api.telegram.org/bot' + getSecret('BOT_TOKEN') + '/' + method;
   var options = {
     method: 'post',
     contentType: 'application/json',
@@ -19,6 +18,8 @@ function tg(method, payload) {
   };
   var response;
   try {
+    // BOT_TOKEN 미설정도 여기서 잡는다. Telegram 호출은 어떤 경우에도 throw 하지 않는다.
+    var url = 'https://api.telegram.org/bot' + getSecret('BOT_TOKEN') + '/' + method;
     response = UrlFetchApp.fetch(url, options);
   } catch (err) {
     logEvent('', 'tg:' + method, JSON.stringify(payload || {}), 'fetch 실패: ' + err);
@@ -115,6 +116,18 @@ function setWebhook() {
 function deleteWebhook() {
   var res = tg('deleteWebhook', { drop_pending_updates: true });
   Logger.log(res ? '웹훅 해제 완료' : '웹훅 해제 실패. Log 탭을 확인하세요.');
+  return res;
+}
+
+/**
+ * 현재 웹훅 상태를 조회해 실행 로그에 출력한다.
+ * 회신이 여러 번 오거나 아예 오지 않을 때 last_error_message 와
+ * pending_update_count 를 보면 원인을 알 수 있다.
+ * @return {?Object}
+ */
+function getWebhookInfo() {
+  var res = tg('getWebhookInfo');
+  Logger.log(res ? JSON.stringify(res.result, null, 2) : '웹훅 정보 조회 실패. Log 탭을 확인하세요.');
   return res;
 }
 
