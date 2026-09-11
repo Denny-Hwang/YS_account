@@ -209,6 +209,8 @@ function runSetupAll() {
   result.push('Recurring 시드 ' + seedRecurring() + '행');
   result.push('Merchants 시드 ' + seedMerchants() + '행');
   result.push('Budgets 시드 ' + seedBudgets() + '행');
+  result.push(buildMonthlyView());
+  result.push(buildDashboard());
   var msg = result.join(' / ');
   Logger.log(msg);
   return msg;
