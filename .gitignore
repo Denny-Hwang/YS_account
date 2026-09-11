@@ -4,3 +4,7 @@ apps-script/.clasp.json
 .env.*
 *.local
 .DS_Store
+
+# webapp
+dist/
+*.tsbuildinfo

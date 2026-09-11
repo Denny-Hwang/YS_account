@@ -1,0 +1,71 @@
+name: 웹앱 GitHub Pages 배포
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'webapp/**'
+      - 'apps-script/src/*.js'
+      - '.github/workflows/deploy-webapp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - name: 의존성 설치
+        working-directory: webapp
+        run: npm ci
+
+      - name: 공유 모듈 브리지 테스트
+        working-directory: webapp
+        run: npm test
+
+      - name: Apps Script 순수 모듈 테스트
+        working-directory: apps-script
+        run: npm test
+
+      - name: 빌드
+        working-directory: webapp
+        env:
+          # 프로젝트 사이트는 https://<user>.github.io/<repo>/ 아래에 붙는다.
+          VITE_BASE: /${{ github.event.repository.name }}/
+          # 비밀값이 아니다. 설정하지 않으면 앱의 설정 화면에서 직접 입력한다.
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+        run: npm run build
+
+      - name: SPA 새로고침 대비 404 복사
+        working-directory: webapp
+        run: cp dist/index.html dist/404.html
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: webapp/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

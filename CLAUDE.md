@@ -23,7 +23,8 @@ Telegram 봇으로 최소 입력 → Google Apps Script 가 파싱·분류해 Go
 - `apps-script/src/*.js` — GAS 코드 (clasp 로 push). 순수 모듈은 `module.exports` 가드 포함.
 - `apps-script/tests/*.test.js` — Node 내장 테스트 러너(`node --test`)로 순수 모듈 검증.
 - `apps-script/appsscript.json`, `apps-script/.clasp.json.example`
-- `webapp/` — P7 이후. 지금은 비워둠.
+- `webapp/` — Vite + React PWA. `npm test`(공유 모듈 브리지), `npm run build`(타입 검사 포함).
+  `apps-script/src` 의 순수 모듈을 빌드 시 ESM 으로 바꿔 그대로 쓴다. 계산 코드를 복사하지 않는다.
 - `docs/` — ARCHITECTURE.md, SHEET_SCHEMA.md, SETUP.md, STATUS.md, decisions/ADR-*.md
 - `claude/prompts/P*.md` — 단계별 프롬프트 사본. `claude/routines/resume.md` — 재개 프로토콜.
 
@@ -34,4 +35,8 @@ STATUS.md 의 "다음 할 일" 항목부터 시작한다.
 ## 검증
 - 순수 모듈 변경 시 반드시 `cd apps-script && npm test` 통과.
 - GAS 전용 파일은 `node --check` 로 문법만 확인.
-- 비밀값 유출 점검: `git grep -nE "[0-9]{9,10}:[A-Za-z0-9_-]{35}|AKfycb|1[A-Za-z0-9_-]{40,}"` 결과가 비어야 한다.
+- 비밀값 유출 점검: 아래 결과가 비어야 한다. 잠금 파일의 무결성 해시는 오탐이라 제외한다.
+  ```
+  git grep -nE "[0-9]{9,10}:[A-Za-z0-9_-]{35}|AKfycb|1[A-Za-z0-9_-]{40,}" \
+    -- ':!*package-lock.json' ':!CLAUDE.md' ':!docs/SETUP.md' ':!claude/prompts/*'
+  ```
