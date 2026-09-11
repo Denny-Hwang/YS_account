@@ -3,8 +3,16 @@
  * 원장은 append-only + soft delete 다. 행을 물리 삭제하지 않는다(Golden Rule 3).
  */
 
-/** Log 탭에 한 줄 남기고 행 번호를 돌려준다. */
-function logEvent(telegramId, rawText, parsedJson, result) {
+/**
+ * Log 탭에 한 줄 남기고 행 번호를 돌려준다.
+ * @param {(string|number)} telegramId
+ * @param {string} rawText
+ * @param {string} parsedJson
+ * @param {string} result
+ * @param {(string|number)=} updateId Telegram update_id. 재전송 판별에 쓴다.
+ * @return {number} 행 번호. 실패하면 -1.
+ */
+function logEvent(telegramId, rawText, parsedJson, result, updateId) {
   try {
     var sheet = getSheet(SHEETS.LOG.name);
     sheet.appendRow([
@@ -12,12 +20,43 @@ function logEvent(telegramId, rawText, parsedJson, result) {
       telegramId === null || telegramId === undefined ? '' : String(telegramId),
       rawText === null || rawText === undefined ? '' : String(rawText),
       parsedJson === null || parsedJson === undefined ? '' : String(parsedJson),
-      result === null || result === undefined ? '' : String(result)
+      result === null || result === undefined ? '' : String(result),
+      updateId === null || updateId === undefined ? '' : String(updateId)
     ]);
     return sheet.getLastRow();
   } catch (err) {
     Logger.log('Log 기록 실패: ' + err);
     return -1;
+  }
+}
+
+/**
+ * Log 탭 최근 행의 update_id 목록을 읽는다.
+ * CacheService 가 비워졌을 때 재전송을 걸러내는 두 번째 방어선이다.
+ * @param {number} limit 되짚어 볼 행 수
+ * @return {!Array<(string|number)>}
+ */
+function recentLogUpdateIds(limit) {
+  try {
+    var headers = readHeaders(SHEETS.LOG.name);
+    var col = headers.indexOf('update_id') + 1;
+    if (col < 1) {
+      return []; // 아직 update_id 열이 없는 시트. setupSheet 이 추가한다.
+    }
+    var sheet = getSheet(SHEETS.LOG.name);
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      return [];
+    }
+    var count = Math.min(Number(limit) || 0, lastRow - 1);
+    if (count < 1) {
+      return [];
+    }
+    return sheet.getRange(lastRow - count + 1, col, count, 1).getValues()
+      .map(function (row) { return row[0]; });
+  } catch (err) {
+    Logger.log('Log update_id 조회 실패: ' + err);
+    return [];
   }
 }
 

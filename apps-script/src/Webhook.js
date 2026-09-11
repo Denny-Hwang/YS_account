@@ -6,6 +6,12 @@
 /** 미분류 메시지의 파싱 결과를 잠시 보관하는 시간(초). */
 var PENDING_TTL_SECONDS = 600;
 
+/** 같은 update_id 를 다시 처리하지 않도록 기억하는 시간(초). 6시간. */
+var UPDATE_DEDUPE_TTL_SECONDS = 21600;
+
+/** 캐시가 비워졌을 때 Log 탭에서 되짚어 볼 행 수. */
+var RECENT_LOG_LOOKBACK = 200;
+
 /** 사용법 안내 3줄. */
 var USAGE_TEXT = [
   '기록: "코스트코 85.89" 처럼 가맹점과 금액을 보내세요. "어제", "9/8", "5만원" 도 알아봅니다.',
@@ -27,6 +33,27 @@ function doPost(e) {
     }
 
     var update = JSON.parse(e.postData.contents);
+    var updateId = update.update_id;
+
+    // 두 번째 게이트: 같은 update_id 는 한 번만 처리한다.
+    // Telegram 은 2xx 를 제때 받지 못하면 같은 update 를 재전송하는데,
+    // 그대로 두면 Transactions 에 같은 행이 여러 개 쌓인다.
+    var hasUpdateId = updateId !== null && updateId !== undefined &&
+      String(updateId).trim() !== '';
+    var cache = CacheService.getScriptCache();
+    var dedupeKey = 'tg_update_' + updateId;
+    var cacheHit = hasUpdateId && cache.get(dedupeKey) !== null;
+    var recentLogIds = (hasUpdateId && !cacheHit)
+      ? recentLogUpdateIds(RECENT_LOG_LOOKBACK)
+      : [];
+    if (isDuplicateUpdate(updateId, cacheHit, recentLogIds)) {
+      return ContentService.createTextOutput('ok');
+    }
+    if (hasUpdateId) {
+      // 처리 시작 전에 먼저 기록한다. 처리 도중 재전송이 와도 중복되지 않는다.
+      cache.put(dedupeKey, '1', UPDATE_DEDUPE_TTL_SECONDS);
+    }
+
     var message = update.message;
     var callback = update.callback_query;
     if (!message && !callback) {
@@ -42,10 +69,10 @@ function doPost(e) {
 
     if (message) {
       var text = message.text || '';
-      var logRow = logEvent(userId, text, '', '수신');
+      var logRow = logEvent(userId, text, '', '수신', updateId);
       handleMessage(message.chat.id, userId, text, message.message_id, logRow);
     } else {
-      logEvent(userId, 'callback:' + callback.data, '', '수신');
+      logEvent(userId, 'callback:' + callback.data, '', '수신', updateId);
       handleCallback(callback);
     }
   } catch (err) {
@@ -56,6 +83,40 @@ function doPost(e) {
     }
   }
   return ContentService.createTextOutput('ok');
+}
+
+/**
+ * 회신용 Telegram 호출 래퍼.
+ * 시트 기록은 이미 끝난 뒤이므로, 회신이 실패해도 예외를 밖으로 내보내지 않는다.
+ * 예외가 doPost 까지 올라가면 200 반환이 늦어져 Telegram 이 같은 update 를 재전송한다.
+ */
+function safeSend(chatId, text, replyMarkup) {
+  try {
+    return sendMessage(chatId, text, replyMarkup);
+  } catch (err) {
+    logEvent('', 'sendMessage 실패', '', String(err));
+    return null;
+  }
+}
+
+/** editMessageText 의 안전 래퍼. */
+function safeEdit(chatId, messageId, text, replyMarkup) {
+  try {
+    return editMessageText(chatId, messageId, text, replyMarkup);
+  } catch (err) {
+    logEvent('', 'editMessageText 실패', '', String(err));
+    return null;
+  }
+}
+
+/** answerCallbackQuery 의 안전 래퍼. */
+function safeAnswer(callbackQueryId, text) {
+  try {
+    return answerCallbackQuery(callbackQueryId, text);
+  } catch (err) {
+    logEvent('', 'answerCallbackQuery 실패', '', String(err));
+    return null;
+  }
 }
 
 /** Parser 에 넘길 실행 컨텍스트. */
@@ -89,24 +150,24 @@ function handleMessage(chatId, userId, text, messageId, logRow) {
   }
   if (parsed.intent === 'query') {
     var summary = buildQuerySummary(ctx.today);
-    sendMessage(chatId, summary);
+    safeSend(chatId, summary);
     updateLogResult(logRow, JSON.stringify(parsed), '조회 응답');
     return;
   }
   if (parsed.intent === 'undo') {
     var target = lastActiveByUser(userId, ctx.today);
     if (!target) {
-      sendMessage(chatId, '취소할 항목 없음');
+      safeSend(chatId, '취소할 항목 없음');
       updateLogResult(logRow, JSON.stringify(parsed), '취소 대상 없음');
       return;
     }
     softDelete(target.id, userId);
-    sendMessage(chatId, '↩︎ 취소했습니다: ' + target.merchant + ' ' +
+    safeSend(chatId, '↩︎ 취소했습니다: ' + target.merchant + ' ' +
       formatUsd(Number(target.amount_usd) || 0));
     updateLogResult(logRow, JSON.stringify(parsed), '취소 ' + target.id);
     return;
   }
-  sendMessage(chatId, USAGE_TEXT);
+  safeSend(chatId, USAGE_TEXT);
   updateLogResult(logRow, JSON.stringify(parsed), '사용법 안내');
 }
 
@@ -123,7 +184,7 @@ function handleRecord(chatId, userId, parsed, messageId, logRow) {
     var pendingKey = String(chatId) + ':' + String(messageId || Date.now());
     CacheService.getScriptCache().put(pendingKey, JSON.stringify(parsed), PENDING_TTL_SECONDS);
     var choices = getConfigList('envelopes').concat(['고정비', '수입']);
-    sendMessage(
+    safeSend(
       chatId,
       '분류를 골라주세요: ' + (parsed.merchantTextRaw || '(가맹점 없음)') + ' ' +
         formatUsd(parsed.amount_usd || 0),
@@ -138,9 +199,9 @@ function handleRecord(chatId, userId, parsed, messageId, logRow) {
   if (result.type === 'income') { recomputeIncomePct(parsed.date.slice(0, 7)); }
   var reply = buildRecordReply(parsed, result);
   if (parsed.confidence === 'low') {
-    sendMessage(chatId, reply + ' (확인 필요)', buildDeleteKeyboard(result.txId));
+    safeSend(chatId, reply + ' (확인 필요)', buildDeleteKeyboard(result.txId));
   } else {
-    sendMessage(chatId, reply);
+    safeSend(chatId, reply);
   }
   updateLogResult(logRow, JSON.stringify(parsed), '기록 ' + result.txId);
 }
@@ -205,7 +266,7 @@ function handleCallback(cq) {
     var choice = parts[2];
     var cached = CacheService.getScriptCache().get(pendingKey);
     if (!cached) {
-      answerCallbackQuery(cq.id, '시간이 지나 만료됐습니다. 다시 보내주세요.');
+      safeAnswer(cq.id, '시간이 지나 만료됐습니다. 다시 보내주세요.');
       return;
     }
     var parsed = JSON.parse(cached);
@@ -215,10 +276,10 @@ function handleCallback(cq) {
     if (result.type === 'income') { recomputeIncomePct(parsed.date.slice(0, 7)); }
     CacheService.getScriptCache().remove(pendingKey);
     if (chatId) {
-      editMessageText(chatId, messageId, buildRecordReply(parsed, result));
+      safeEdit(chatId, messageId, buildRecordReply(parsed, result));
     }
     logEvent(userId, 'callback:' + data, JSON.stringify(parsed), '기록 ' + result.txId);
-    answerCallbackQuery(cq.id, '기록했습니다');
+    safeAnswer(cq.id, '기록했습니다');
     return;
   }
 
@@ -226,14 +287,14 @@ function handleCallback(cq) {
     var txId = data.split('|')[1];
     var ok = softDelete(txId, userId);
     if (chatId) {
-      editMessageText(chatId, messageId, ok ? '↩︎ 삭제했습니다.' : '이미 삭제된 항목입니다.');
+      safeEdit(chatId, messageId, ok ? '↩︎ 삭제했습니다.' : '이미 삭제된 항목입니다.');
     }
     logEvent(userId, 'callback:' + data, '', ok ? '삭제 ' + txId : '삭제 대상 없음');
-    answerCallbackQuery(cq.id, ok ? '삭제했습니다' : '대상을 찾지 못했습니다');
+    safeAnswer(cq.id, ok ? '삭제했습니다' : '대상을 찾지 못했습니다');
     return;
   }
 
-  answerCallbackQuery(cq.id);
+  safeAnswer(cq.id);
 }
 
 /** 버튼 선택값을 분류 객체로 바꾼다. */
