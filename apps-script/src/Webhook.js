@@ -12,6 +12,9 @@ var UPDATE_DEDUPE_TTL_SECONDS = 21600;
 /** 캐시가 비워졌을 때 Log 탭에서 되짚어 볼 행 수. */
 var RECENT_LOG_LOOKBACK = 200;
 
+/** 중복 검사 구간의 잠금을 기다리는 시간(ms). */
+var DEDUPE_LOCK_WAIT_MS = 10000;
+
 /** 사용법 안내 3줄. */
 var USAGE_TEXT = [
   '기록: "코스트코 85.89" 처럼 가맹점과 금액을 보내세요. "어제", "9/8", "5만원" 도 알아봅니다.',
@@ -38,20 +41,8 @@ function doPost(e) {
     // 두 번째 게이트: 같은 update_id 는 한 번만 처리한다.
     // Telegram 은 2xx 를 제때 받지 못하면 같은 update 를 재전송하는데,
     // 그대로 두면 Transactions 에 같은 행이 여러 개 쌓인다.
-    var hasUpdateId = updateId !== null && updateId !== undefined &&
-      String(updateId).trim() !== '';
-    var cache = CacheService.getScriptCache();
-    var dedupeKey = 'tg_update_' + updateId;
-    var cacheHit = hasUpdateId && cache.get(dedupeKey) !== null;
-    var recentLogIds = (hasUpdateId && !cacheHit)
-      ? recentLogUpdateIds(RECENT_LOG_LOOKBACK)
-      : [];
-    if (isDuplicateUpdate(updateId, cacheHit, recentLogIds)) {
+    if (!claimUpdate(updateId)) {
       return ContentService.createTextOutput('ok');
-    }
-    if (hasUpdateId) {
-      // 처리 시작 전에 먼저 기록한다. 처리 도중 재전송이 와도 중복되지 않는다.
-      cache.put(dedupeKey, '1', UPDATE_DEDUPE_TTL_SECONDS);
     }
 
     var message = update.message;
@@ -88,6 +79,56 @@ function doPost(e) {
     }
   }
   return ContentService.createTextOutput('ok');
+}
+
+/**
+ * 이 update 를 처리할 권리를 딱 한 실행만 갖게 한다.
+ *
+ * 순서가 중요하다.
+ *   1) 스크립트 잠금을 잡는다. 같은 update 의 재전송이 동시에 들어와도 한 번에 하나만 여기를 지난다.
+ *   2) 캐시를 본다. 있으면 중복이다.
+ *   3) 없으면 즉시 캐시에 적는다. 느린 작업(Log 읽기) 전에 적어야 그 사이에 끼어드는 재전송이 걸린다.
+ *   4) 잠금을 푼 뒤에 Log 탭으로 2차 확인한다. 캐시가 비워졌을 때를 위한 안전망이다.
+ *
+ * 예전에는 Log 읽기(수백 ms ~ 수 초)를 먼저 하고 캐시에 적었다. 그 창에 재전송이 들어오면
+ * 둘 다 캐시를 못 보고 둘 다 처리해서 답장이 두 번 갔다.
+ *
+ * @param {(string|number|null|undefined)} updateId
+ * @return {boolean} true 면 이 실행이 처리한다. false 면 이미 처리 중이거나 처리됐다.
+ */
+function claimUpdate(updateId) {
+  var hasUpdateId = updateId !== null && updateId !== undefined &&
+    String(updateId).trim() !== '';
+  if (!hasUpdateId) {
+    return true; // update_id 가 없으면 멱등 판정을 할 수 없으므로 정상 처리한다
+  }
+
+  var cache = CacheService.getScriptCache();
+  var dedupeKey = 'tg_update_' + updateId;
+  var lock = LockService.getScriptLock();
+  var locked = false;
+  try {
+    locked = lock.tryLock(DEDUPE_LOCK_WAIT_MS);
+    if (!locked) {
+      // 잠금을 못 잡았다는 것은 다른 실행이 같은 구간을 지나는 중이라는 뜻이다.
+      // 그쪽이 처리하도록 두고 이쪽은 물러난다.
+      logEvent('', 'dedupe', '', '잠금 대기 초과, 건너뜀 update_id=' + updateId);
+      return false;
+    }
+    if (cache.get(dedupeKey) !== null) {
+      return false;
+    }
+    cache.put(dedupeKey, '1', UPDATE_DEDUPE_TTL_SECONDS);
+  } finally {
+    if (locked) {
+      lock.releaseLock();
+    }
+  }
+
+  // 캐시가 비워졌을 가능성에 대비한 2차 확인. 잠금 밖에서 해도 된다.
+  // 캐시에는 이미 적혀 있으므로 다른 실행이 끼어들 수 없다.
+  var recentLogIds = recentLogUpdateIds(RECENT_LOG_LOOKBACK);
+  return !isDuplicateUpdate(updateId, false, recentLogIds);
 }
 
 /**
