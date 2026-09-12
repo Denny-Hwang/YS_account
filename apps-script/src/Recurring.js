@@ -41,7 +41,12 @@ function recurringExpectedAmount(definition, month) {
   var rule = String(definition.amount_rule || 'fixed').trim();
   var pct = /^income_pct:(\d+(?:\.\d+)?)$/.exec(rule);
   if (pct) {
-    return roundCents(monthIncomeTotal(month) * Number(pct[1]) / 100);
+    var computed = roundCents(monthIncomeTotal(month) * Number(pct[1]) / 100);
+    if (computed > 0) {
+      return computed;
+    }
+    // 그 달 수입이 아직 기록되지 않았으면 expected_amount 를 예산 값으로 쓴다.
+    return Number(definition.expected_amount) || 0;
   }
   return Number(definition.expected_amount) || 0;
 }

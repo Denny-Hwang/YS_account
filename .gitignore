@@ -8,3 +8,5 @@ apps-script/.clasp.json
 # webapp
 dist/
 *.tsbuildinfo
+apps-script/src/PersonalSeed.js
+apps-script/src/Personal*.js

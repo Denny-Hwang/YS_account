@@ -126,7 +126,7 @@
 | key | 기본값 | 설명 |
 |---|---|---|
 | fx_usd_krw | 1332 | KRW → USD 환산에 쓰는 환율 |
-| envelopes | 식료품,생필품,기타 | 유동비 봉투 목록(콤마 구분) |
+| envelopes | 식료품,생필품,예비비 | 유동비 봉투 목록(콤마 구분). 외식은 식료품에 포함 |
 | default_currency | USD | 통화 표기 없을 때 기본 통화 |
 | timezone | America/Los_Angeles | 날짜 계산 기준 시간대 |
 | allowed_telegram_ids | (빈값) | 허용 Telegram user id(콤마 구분). 저장소에는 쓰지 않는다 |

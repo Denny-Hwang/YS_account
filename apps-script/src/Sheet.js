@@ -146,6 +146,33 @@ function updateRowById(name, id, patch) {
 }
 
 /**
+ * id 로 행을 찾아 갱신하고, 없으면 추가한다.
+ * row 에 없는 열은 건드리지 않는다. 그래서 사용자가 시트에서 고친 값(예: active)을 지키고 싶으면
+ * 그 키를 row 에서 빼면 된다.
+ * @param {string} name
+ * @param {!Object} row id 를 포함한 객체
+ * @return {string} 'added' | 'updated'
+ */
+function upsertRowById(name, row) {
+  var id = row.id;
+  if (id === null || id === undefined || String(id).trim() === '') {
+    throw new Error('upsertRowById: id 가 없습니다. 탭=' + name);
+  }
+  if (findRowById(name, id) < 0) {
+    appendRow(name, row);
+    return 'added';
+  }
+  var patch = {};
+  Object.keys(row).forEach(function (key) {
+    if (key !== '_row' && key !== 'id') {
+      patch[key] = row[key];
+    }
+  });
+  updateRowById(name, id, patch);
+  return 'updated';
+}
+
+/**
  * 새 id 를 만든다.
  * @param {string} prefix
  * @return {string}

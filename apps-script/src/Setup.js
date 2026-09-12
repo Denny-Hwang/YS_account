@@ -52,8 +52,13 @@ var RECURRING_SEED = [
   ['R06', '유류비', 'fixed', '유류비', 250, 'USD', 1, 'fixed', 30, 'Y', 'ADR-0003 (c) 미결: variable 전환 가능'],
   ['R07', '주일헌금', 'fixed', '헌금', 160, 'USD', 1, 'fixed', 0, 'Y', ''],
   ['R08', '십일조', 'fixed', '십일조', '', 'USD', 26, 'income_pct:7', 0, 'Y', '그 달 수입 합의 7%'],
-  ['R09', '부채상환', 'fixed', '부채상환', '', 'USD', 15, 'fixed', 0, 'Y', '금액은 Debts 기준으로 입력']
+  ['R09', '부채상환(미국)', 'fixed', '부채상환', '', 'USD', 15, 'fixed', 0, 'Y', '금액은 Debts 기준으로 입력'],
+  ['R10', '자동차 보험', 'fixed', '보험', '', 'USD', 1, 'fixed', 0, 'Y', ''],
+  ['R11', '건강보험(한국)', 'fixed', '보험', '', 'USD', 1, 'fixed', 0, 'Y', ''],
+  ['R12', '한국 대출 상환', 'fixed', '부채상환', '', 'KRW', 1, 'fixed', 5, 'Y', '한국 대출 월 상환 합계. 금액은 Debts 기준']
 ];
+// 실제 금액은 저장소에 두지 않는다. apps-script/PersonalSeed.js.example 을 보고
+// src/PersonalSeed.js(.gitignore 대상)를 만들어 applyPersonalDefaults() 로 덮어쓴다.
 
 /** 초기 Merchants 사전 시드. keyword, type, kind, category, envelope, recurring_id, hit_count, last_used */
 var MERCHANTS_SEED = [
@@ -237,6 +242,52 @@ function seedBudgets(month) {
     sheet.getRange(sheet.getLastRow() + 1, 1, toAdd.length, 4).setValues(toAdd);
   }
   return toAdd.length;
+}
+
+/**
+ * 봉투 목록을 바꾼다. Config.envelopes 를 쓰고 드롭다운을 다시 건다.
+ * @param {!Array<string>} names
+ */
+function setEnvelopes(names) {
+  var list = (names || []).map(function (n) { return String(n).trim(); }).filter(Boolean);
+  if (!list.length) {
+    throw new Error('setEnvelopes: 봉투가 비어 있습니다.');
+  }
+  setConfig('envelopes', list.join(','));
+  applyValidations();
+  return list.length;
+}
+
+/**
+ * 해당 월의 봉투 예산 금액을 정한다. 행이 있으면 amount 만 바꾸고(carryover 유지), 없으면 추가한다.
+ * @param {string} month 'YYYY-MM'
+ * @param {!Object<string, number>} amounts 봉투 → 금액
+ * @return {number} 손댄 행 수
+ */
+function applyBudgetAmounts(month, amounts) {
+  var yyyyMm = month || currentMonthStr();
+  var sheet = getSheet(SHEETS.BUDGETS.name);
+  var headers = readHeaders(SHEETS.BUDGETS.name);
+  var amountCol = headers.indexOf('amount') + 1;
+  var rows = readAll(SHEETS.BUDGETS.name);
+  var touched = 0;
+  Object.keys(amounts || {}).forEach(function (envelope) {
+    var hit = null;
+    rows.forEach(function (r) {
+      if (String(r.month).trim() === yyyyMm && String(r.envelope).trim() === envelope) {
+        hit = r;
+      }
+    });
+    if (hit) {
+      sheet.getRange(hit._row, amountCol).setValue(Number(amounts[envelope]) || 0);
+    } else {
+      appendRow(SHEETS.BUDGETS.name, {
+        month: yyyyMm, envelope: envelope, amount: Number(amounts[envelope]) || 0, carryover: 'reset'
+      });
+    }
+    touched++;
+  });
+  return touched;
 }
 
 /** 전체 초기화. 두 번 실행해도 결과가 같다(멱등). */

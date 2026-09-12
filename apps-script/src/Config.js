@@ -74,7 +74,7 @@ var SHEETS = {
 /** Config 탭 필수 키와 기본값. setupSheet() 이 없는 키만 삽입한다. */
 var CONFIG_DEFAULTS = [
   ['fx_usd_krw', '1332'],
-  ['envelopes', '식료품,생필품,기타'],
+  ['envelopes', '식료품,생필품,예비비'],
   ['default_currency', 'USD'],
   ['timezone', 'America/Los_Angeles'],
   ['allowed_telegram_ids', ''],
@@ -136,6 +136,29 @@ function getConfigMap() {
   }
   cache.put('config_map', JSON.stringify(map), CONFIG_CACHE_SECONDS);
   return map;
+}
+
+/**
+ * Config 값을 쓴다. 키가 있으면 값만 바꾸고, 없으면 행을 추가한다. 캐시를 비운다.
+ * @param {string} key
+ * @param {string|number} value
+ */
+function setConfig(key, value) {
+  var sheet = getSpreadsheet().getSheetByName(SHEETS.CONFIG.name);
+  if (!sheet) {
+    throw new Error('Config 탭이 없습니다. runSetupAll() 을 먼저 실행하세요.');
+  }
+  var lastRow = sheet.getLastRow();
+  var values = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, 1).getValues() : [];
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][0]).trim() === key) {
+      sheet.getRange(i + 2, 2).setValue(value);
+      clearConfigCache();
+      return;
+    }
+  }
+  sheet.appendRow([key, value]);
+  clearConfigCache();
 }
 
 /** Config 캐시를 비운다. Config 값을 코드로 바꾼 직후 호출한다. */
