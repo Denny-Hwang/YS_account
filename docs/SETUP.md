@@ -56,6 +56,22 @@ Apps Script 편집기 → `프로젝트 설정` → `스크립트 속성` 에서
    `R08 십일조` 는 `income_pct:7` 규칙이라 금액을 비워 둔다. `R09 부채상환` 금액도 직접 입력한다.
 5. `Config.envelopes` 를 바꿨다면 `setupSheet` 을 한 번 더 실행해 드롭다운을 갱신한다.
 
+### e. 우리 집 숫자 넣기 (PersonalSeed)
+실제 예산·고정비·대출 금액은 **저장소에 두지 않는다.** 이 저장소는 공개라서 커밋하면 누구나 본다.
+대신 `.gitignore` 에 걸린 파일 하나에 모아 두고 Apps Script 에만 올린다.
+
+1. `apps-script/PersonalSeed.js.example` 을 `apps-script/src/PersonalSeed.js` 로 복사한다.
+   (이미 채워진 파일을 받았다면 그 파일을 같은 자리에 둔다.)
+2. 숫자를 실제 값으로 바꾼다. `PERSONAL_ENVELOPES`(봉투 예산), `PERSONAL_RECURRING`(고정비), `PERSONAL_DEBTS`(부채).
+3. `clasp push`. `git status` 에 이 파일이 안 보이는 게 정상이다.
+4. 편집기에서 `runSetupAll` 을 먼저 실행한 뒤 **`applyPersonalDefaults`** 를 실행한다.
+
+여러 번 실행해도 같은 결과다. id 가 같은 행은 갱신하고 없는 행은 추가한다.
+Recurring 의 `active` 는 건드리지 않으므로 시트에서 끈 항목은 꺼진 채로 남는다.
+실행 로그에 `봉투 3개 · 예산 3행 · 고정비 추가 N / 갱신 M · 부채 추가 …` 가 찍히면 끝이다.
+
+`Config.fx_usd_krw` 가 예산표의 환율(1,332)과 다르면 KRW 항목의 달러 환산이 어긋난다. 먼저 맞춘다.
+
 ---
 
 ## P3 — Telegram 웹훅 연결

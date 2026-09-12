@@ -37,7 +37,7 @@ var MIGRATION_MAP = {
   defaults: {
     defaultType: 'expense',
     defaultKind: 'variable',
-    defaultEnvelope: '기타',
+    defaultEnvelope: '예비비',
     incomeLabels: ['수입', 'income', '입금'],
     expenseLabels: ['지출', 'expense', '출금']
   }

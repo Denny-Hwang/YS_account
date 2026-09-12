@@ -1,0 +1,51 @@
+/**
+ * PersonalSeed.js — 우리 집 실제 숫자. 이 파일은 저장소에 올리지 않는다.
+ *
+ * 쓰는 법
+ *   1) 이 파일을 apps-script/src/PersonalSeed.js 로 복사한다 (.gitignore 대상이라 커밋되지 않는다)
+ *   2) 아래 숫자를 실제 값으로 바꾼다
+ *   3) clasp push
+ *   4) 편집기에서 runSetupAll 을 먼저 실행한 뒤 applyPersonalDefaults 를 한 번 실행한다
+ *
+ * 여러 번 실행해도 결과가 같다. id 가 같은 행은 갱신하고 없는 행은 추가한다.
+ * Recurring 의 active 는 건드리지 않는다. 시트에서 끈 항목은 꺼진 채로 남는다.
+ */
+
+/** 유동비 봉투와 월 예산(USD). 키 순서가 봇 버튼 순서다. */
+var PERSONAL_ENVELOPES = {
+  '식료품': 1000,
+  '생필품': 100,
+  '예비비': 100
+};
+
+/** 고정비. SHEETS.RECURRING 헤더와 같은 키를 쓴다. active 는 일부러 뺐다. */
+var PERSONAL_RECURRING = [
+  { id: 'R01', name: '하우스 렌트', kind: 'fixed', category: '주거비', expected_amount: 1000, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 0, notes: '' },
+  { id: 'R02', name: '관리비', kind: 'fixed', category: '주거비', expected_amount: 100, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 15, notes: '' },
+  { id: 'R05', name: '월 구독료', kind: 'fixed', category: '구독', expected_amount: 50, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 0, notes: '서비스A 20, 서비스B 30' },
+  { id: 'R08', name: '십일조', kind: 'fixed', category: '십일조', expected_amount: 100, currency: 'USD', due_day: 26, amount_rule: 'income_pct:10', tolerance_pct: 0, notes: '수입의 10%. 수입 기록이 없는 달은 expected_amount' },
+  { id: 'R12', name: '한국 대출 상환', kind: 'fixed', category: '부채상환', expected_amount: 1000000, currency: 'KRW', due_day: 1, amount_rule: 'fixed', tolerance_pct: 5, notes: '원화 고정' }
+];
+
+/** 부채. SHEETS.DEBTS 헤더와 같은 키. principal 과 monthly_payment 는 currency 기준. */
+var PERSONAL_DEBTS = [
+  { id: 'D01', name: '학자금', principal: 1000000, rate_pct: 3.0, monthly_payment: 50000, remaining_count: 20, currency: 'KRW', notes: '기준일 2026-01-01' },
+  { id: 'D02', name: '신용대출', principal: 5000, rate_pct: 10.0, monthly_payment: 500, remaining_count: 10, currency: 'USD', notes: '' }
+];
+
+/** 위 값을 시트에 적용한다. */
+function applyPersonalDefaults() {
+  var lines = [];
+  lines.push('봉투 ' + setEnvelopes(Object.keys(PERSONAL_ENVELOPES)) + '개');
+  lines.push('예산 ' + applyBudgetAmounts(currentMonthStr(), PERSONAL_ENVELOPES) + '행');
+  var rec = { added: 0, updated: 0 };
+  PERSONAL_RECURRING.forEach(function (row) { rec[upsertRowById(SHEETS.RECURRING.name, row)]++; });
+  lines.push('고정비 추가 ' + rec.added + ' / 갱신 ' + rec.updated);
+  var debt = { added: 0, updated: 0 };
+  PERSONAL_DEBTS.forEach(function (row) { debt[upsertRowById(SHEETS.DEBTS.name, row)]++; });
+  lines.push('부채 추가 ' + debt.added + ' / 갱신 ' + debt.updated);
+  clearConfigCache();
+  var msg = lines.join(' · ');
+  Logger.log(msg);
+  return msg;
+}
