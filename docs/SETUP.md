@@ -72,8 +72,18 @@ Apps Script 편집기 → 우상단 `배포` → `새 배포` → 유형 `웹 �
 배포하면 `https://script.google.com/macros/s/AKfycb.../exec` 형태의 URL 이 나온다.
 이 URL 을 Script Properties 의 `WEBAPP_URL` 에 저장한다. **URL 자체가 비밀값이다.**
 
-> 코드를 수정할 때마다 `배포 관리` → 기존 배포의 연필 아이콘 → 버전 `새 버전` 으로 갱신해야
-> 웹훅 URL 이 그대로 유지된다. `새 배포` 를 다시 만들면 URL 이 바뀌므로 `setWebhook` 을 다시 실행해야 한다.
+#### 코드를 고친 뒤에는 반드시 새 버전을 배포한다
+`clasp push` 나 편집기 저장은 **코드만** 올린다. 웹훅이 부르는 `/exec` 주소는 마지막으로 배포한 버전을
+계속 실행한다. 새 코드를 웹훅에 반영하려면:
+
+1. 편집기 우상단 `배포` → `배포 관리`
+2. 기존 배포의 연필 아이콘 → 버전 드롭다운에서 **새 버전** → `배포`
+
+이렇게 하면 URL 이 그대로라 `setWebhook` 을 다시 할 필요가 없다.
+`새 배포` 를 새로 만들면 URL 이 바뀌므로 `WEBAPP_URL` 을 갱신하고 `setWebhook` 을 다시 실행해야 한다.
+
+편집기의 `실행` 화면에서 `doPost` 실행 기록을 열어 보면 어느 버전이 돌았는지 나온다.
+고친 코드가 안 도는 것 같으면 먼저 여기를 본다.
 
 ### b. 사람 이름 매핑 (선택)
 `Config` 탭에 `name_<telegram_id>` 키를 추가하면 원장의 `payer` 열에 그 이름이 들어간다.
@@ -100,7 +110,13 @@ Apps Script 편집기 → 우상단 `배포` → `새 배포` → 유형 `웹 �
 - 봇이 아무 반응이 없다 → `Log` 탭 확인. 비어 있으면 token 불일치이거나 `allowed_telegram_ids` 누락이다.
 - `Config.allowed_telegram_ids` 에 본인 ID 가 콤마로 정확히 들어갔는지 확인한다(공백 무방).
 - Config 값은 5분 캐시된다. 바꾼 직후라면 잠시 기다리거나 `clearConfigCache` 를 실행한다.
-- 회신이 여러 번 오면 `getWebhookInfo` 를 실행해 `last_error_message` 를 확인한다.
+- **회신이 여러 번 온다** → 순서대로 본다.
+  1. 위 "새 버전 배포" 를 했는가. 안 했으면 웹훅은 아직 예전 코드를 돌리고 있다.
+  2. `getWebhookInfo` 를 실행해 `last_error_message` 와 `pending_update_count` 를 본다.
+     오류 메시지가 있으면 Telegram 이 응답을 제때 못 받아 재전송하고 있다는 뜻이다.
+  3. `Log` 탭에서 같은 `update_id` 가 여러 줄인지 본다. 여러 줄이면 중복 검사가 안 도는 것이고,
+     한 줄인데 답장이 여러 번이면 회신 쪽 문제다.
+  4. `setupSheet` 을 한 번 실행해 `Log` 탭에 `update_id` 열이 있는지 확인한다.
 
 ---
 
@@ -225,15 +241,34 @@ columns: {
 **시트 공유 권한이 곧 접근 권한이다.** 시트에 편집자로 공유된 계정만 데이터를 볼 수 있다.
 
 ### a. Google Cloud 준비
+구글이 2024년에 "OAuth 동의 화면" 메뉴를 **Google Auth Platform** 으로 옮기고 세 탭으로 나눴다.
+아래는 그 기준이다. 예전 주소로 들어가도 자동으로 여기로 넘어온다.
+
 1. [Google Cloud 콘솔](https://console.cloud.google.com/)에서 프로젝트를 하나 만든다(기존 것 재사용 가능).
 2. `API 및 서비스 → 라이브러리` 에서 **Google Sheets API** 를 사용 설정한다.
-3. `OAuth 동의 화면` 을 만든다. 사용자 유형은 **외부**, 게시 상태는 **테스트** 로 두고
-   테스트 사용자에 두 사람의 구글 계정을 추가한다. 범위는 따로 추가하지 않아도 된다.
-4. `사용자 인증 정보 → 사용자 인증 정보 만들기 → OAuth 클라이언트 ID` 에서 유형을 **웹 애플리케이션** 으로 고른다.
-5. **승인된 JavaScript 원본** 에 아래를 넣는다. 리디렉션 URI 는 비워 둔다.
-   - `https://denny-hwang.github.io` (GitHub Pages 주소의 도메인 부분만)
-   - `http://localhost:5173` (로컬 개발용)
-6. 만들어진 클라이언트 ID 를 적어 둔다. 이 값은 비밀이 아니다(브라우저에 그대로 노출된다).
+   이걸 먼저 해야 아래 Google Auth Platform 메뉴가 나타난다.
+3. 왼쪽 메뉴 `API 및 서비스 → Google Auth Platform` 을 연다. 바로 가기는 아래 표.
+
+| 탭 | 바로 가기 | 여기서 하는 것 |
+|---|---|---|
+| Branding | `https://console.cloud.google.com/auth/branding` | 앱 이름(예: 우리집 가계부), 지원 이메일 |
+| Audience | `https://console.cloud.google.com/auth/audience` | 사용자 유형 **외부**, 게시 상태 **테스트**, **테스트 사용자**에 두 사람 지메일 추가 |
+| Clients | `https://console.cloud.google.com/auth/clients` | OAuth 클라이언트 ID 만들기 |
+
+4. **Clients** 에서 `클라이언트 만들기`, 유형은 **웹 애플리케이션**.
+   **승인된 JavaScript 원본** 에 `+ Add URI` 로 아래 두 줄을 **각각** 넣는다. 리디렉션 URI 는 비워 둔다.
+   ```
+   https://denny-hwang.github.io
+   http://localhost:5173
+   ```
+   끝에 슬래시나 `/YS_account/` 같은 경로를 붙이면 거부된다. 도메인까지만이다.
+5. 만들어진 클라이언트 ID 를 적어 둔다. 이 값은 비밀이 아니다(브라우저에 그대로 노출된다).
+   접근을 막는 것은 이 값이 아니라 시트 공유 권한과 테스트 사용자 목록이다.
+
+**`Error 403: access_denied` — "has not completed the Google verification process"**
+로그인하려는 계정이 Audience 탭의 테스트 사용자에 없다는 뜻이다. 프로젝트 소유자도 예외가 아니다.
+`/auth/audience` 에서 그 계정을 추가하고 다시 시도한다. 브라우저에 구글 계정이 여러 개면 시크릿 창에서 확인한다.
+게시 상태를 "프로덕션" 으로 올리지 않는다. 시트 권한은 민감한 범위라 심사가 필요하고, 두 사람만 쓰는 앱에는 테스트 상태로 충분하다(100명까지).
 
 ### b. GitHub Pages 켜기
 1. 저장소 `Settings → Pages → Build and deployment → Source` 를 **GitHub Actions** 로 바꾼다.
