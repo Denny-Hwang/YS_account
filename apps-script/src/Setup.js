@@ -19,7 +19,8 @@ var VALIDATIONS = {
   Recurring: {
     kind: 'kind',
     currency: 'currency',
-    active: 'active'
+    active: 'active',
+    type: 'type'
   },
   Budgets: {
     envelope: 'ENVELOPES',
@@ -42,23 +43,24 @@ var VALIDATIONS = {
   }
 };
 
-/** 초기 Recurring 시드. 금액은 사용자가 시트에서 수정한다. */
+/**
+ * 초기 Recurring 시드. 전부 예시용 가짜 숫자다. 실제 금액은 저장소에 두지 않는다(Golden Rule 1).
+ * 우리 집 숫자는 apps-script/PersonalSeed.js.example 을 보고 src/PersonalSeed.js(.gitignore 대상)에
+ * 적은 뒤 applyPersonalDefaults() 로 덮어쓴다.
+ * type: expense 고정비 / income 수입원 / transfer 저축(먼저 저축).
+ */
 var RECURRING_SEED = [
-  ['R01', '하우스 렌트', 'fixed', '주거비', 2100, 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
-  ['R02', '관리비', 'fixed', '주거비', 207, 'USD', 1, 'fixed', 15, 'Y', '', 'expense'],
-  ['R03', '어린이집', 'fixed', '교육비', 350, 'USD', 4, 'fixed', 0, 'Y', '', 'expense'],
-  ['R04', '통신비', 'fixed', '통신비', 80, 'USD', 1, 'fixed', 10, 'Y', '', 'expense'],
-  ['R05', '월 구독료', 'fixed', '구독', 173, 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
-  ['R06', '유류비', 'fixed', '유류비', 250, 'USD', 1, 'fixed', 30, 'Y', 'ADR-0003 (c) 미결: variable 전환 가능', 'expense'],
-  ['R07', '주일헌금', 'fixed', '헌금', 160, 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
-  ['R08', '십일조', 'fixed', '십일조', '', 'USD', 26, 'income_pct:7', 0, 'Y', '그 달 수입 합의 7%', 'expense'],
-  ['R09', '부채상환(미국)', 'fixed', '부채상환', '', 'USD', 15, 'fixed', 0, 'Y', '금액은 Debts 기준으로 입력', 'expense'],
-  ['R10', '자동차 보험', 'fixed', '보험', '', 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
-  ['R11', '건강보험(한국)', 'fixed', '보험', '', 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
-  ['R12', '한국 대출 상환', 'fixed', '부채상환', '', 'KRW', 1, 'fixed', 5, 'Y', '한국 대출 월 상환 합계. 금액은 Debts 기준', 'expense']
+  ['R01', '렌트', 'fixed', '주거비', 1000, 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
+  ['R02', '관리비', 'fixed', '주거비', 100, 'USD', 1, 'fixed', 15, 'Y', '', 'expense'],
+  ['R03', '통신비', 'fixed', '통신비', 50, 'USD', 1, 'fixed', 10, 'Y', '', 'expense'],
+  ['R04', '구독료', 'fixed', '구독', 30, 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
+  ['R05', '유류비', 'fixed', '유류비', 100, 'USD', 1, 'fixed', 30, 'Y', '주유할 때마다 "주유 45" 로 보내면 첫 건은 예정 행을 확정하고 다음 건은 새 행으로 쌓인다', 'expense'],
+  ['R06', '보험', 'fixed', '보험', 100, 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
+  ['R07', '부채상환', 'fixed', '부채상환', 100, 'USD', 15, 'fixed', 0, 'Y', 'Debts.recurring_id 에 R07 을 적으면 확정할 때 원금이 줄어든다', 'expense'],
+  ['R08', '기부', 'fixed', '기부', 100, 'USD', 26, 'income_pct:10', 0, 'Y', '그 달 수입 합의 10%', 'expense'],
+  ['S01', '저축', 'fixed', '저축', 300, 'USD', 1, 'fixed', 0, 'Y', '먼저 저축. "저축 300" 을 보내면 확정된다', 'transfer'],
+  ['I01', '급여', 'fixed', '급여', 3000, 'USD', 1, 'fixed', 0, 'Y', '"급여 3000" 을 보내면 확정된다', 'income']
 ];
-// 실제 금액은 저장소에 두지 않는다. apps-script/PersonalSeed.js.example 을 보고
-// src/PersonalSeed.js(.gitignore 대상)를 만들어 applyPersonalDefaults() 로 덮어쓴다.
 
 /** 초기 Merchants 사전 시드. keyword, type, kind, category, envelope, recurring_id, hit_count, last_used */
 var MERCHANTS_SEED = [
@@ -66,12 +68,17 @@ var MERCHANTS_SEED = [
   ['costco', 'expense', 'variable', '식료품', '식료품', '', 0, ''],
   ['세이프웨이', 'expense', 'variable', '식료품', '식료품', '', 0, ''],
   ['safeway', 'expense', 'variable', '식료품', '식료품', '', 0, ''],
-  ['밤부마켓', 'expense', 'variable', '식료품', '식료품', '', 0, ''],
-  ['주유', 'expense', 'fixed', '유류비', '', 'R06', 0, ''],
-  ['gas', 'expense', 'fixed', '유류비', '', 'R06', 0, ''],
+  ['마트', 'expense', 'variable', '식료품', '식료품', '', 0, ''],
+  ['식당', 'expense', 'variable', '외식', '식료품', '', 0, ''],
+  ['카페', 'expense', 'variable', '외식', '식료품', '', 0, ''],
+  ['레스토랑', 'expense', 'variable', '외식', '식료품', '', 0, ''],
+  ['restaurant', 'expense', 'variable', '외식', '식료품', '', 0, ''],
+  ['다이소', 'expense', 'variable', '생필품', '생필품', '', 0, ''],
+  ['주유', 'expense', 'fixed', '유류비', '', 'R05', 0, ''],
+  ['gas', 'expense', 'fixed', '유류비', '', 'R05', 0, ''],
   ['관리비', 'expense', 'fixed', '주거비', '', 'R02', 0, ''],
-  ['통신비', 'expense', 'fixed', '통신비', '', 'R04', 0, ''],
-  ['레슨', 'income', 'variable', '영주 레슨', '', '', 0, '']
+  ['통신비', 'expense', 'fixed', '통신비', '', 'R03', 0, ''],
+  ['레슨', 'income', 'variable', '레슨', '', '', 0, '']
 ];
 
 /**
@@ -235,9 +242,11 @@ function seedBudgets(month) {
       existing[String(r.envelope).trim()] = true;
     }
   });
+  // 초과분을 흡수하는 봉투(예비비)는 남은 돈을 다음 달로 넘기는 편이 자연스러워 carry 로 시작한다.
+  var overspend = getConfig('overspend_envelope', '');
   var toAdd = getConfigList('envelopes')
     .filter(function (env) { return !existing[env]; })
-    .map(function (env) { return [yyyyMm, env, 0, 'reset']; });
+    .map(function (env) { return [yyyyMm, env, 0, env === overspend ? 'carry' : 'reset']; });
   if (toAdd.length > 0) {
     sheet.getRange(sheet.getLastRow() + 1, 1, toAdd.length, 4).setValues(toAdd);
   }
@@ -259,9 +268,10 @@ function setEnvelopes(names) {
 }
 
 /**
- * 해당 월의 봉투 예산 금액을 정한다. 행이 있으면 amount 만 바꾸고(carryover 유지), 없으면 추가한다.
+ * 해당 월의 봉투 예산을 정한다. 값은 숫자(금액만) 또는 {amount, carryover} 다.
+ * 행이 있으면 amount 를 바꾸고 carryover 는 준 경우에만 바꾼다. 없으면 추가한다.
  * @param {string} month 'YYYY-MM'
- * @param {!Object<string, number>} amounts 봉투 → 금액
+ * @param {!Object<string, (number|{amount: number, carryover: string})>} amounts 봉투 → 값
  * @return {number} 손댄 행 수
  */
 function applyBudgetAmounts(month, amounts) {
@@ -269,9 +279,13 @@ function applyBudgetAmounts(month, amounts) {
   var sheet = getSheet(SHEETS.BUDGETS.name);
   var headers = readHeaders(SHEETS.BUDGETS.name);
   var amountCol = headers.indexOf('amount') + 1;
+  var carryCol = headers.indexOf('carryover') + 1;
   var rows = readAll(SHEETS.BUDGETS.name);
   var touched = 0;
   Object.keys(amounts || {}).forEach(function (envelope) {
+    var spec = amounts[envelope];
+    var amount = Number(spec && typeof spec === 'object' ? spec.amount : spec) || 0;
+    var carryover = spec && typeof spec === 'object' && spec.carryover ? String(spec.carryover) : '';
     var hit = null;
     rows.forEach(function (r) {
       if (String(r.month).trim() === yyyyMm && String(r.envelope).trim() === envelope) {
@@ -279,14 +293,18 @@ function applyBudgetAmounts(month, amounts) {
       }
     });
     if (hit) {
-      sheet.getRange(hit._row, amountCol).setValue(Number(amounts[envelope]) || 0);
+      sheet.getRange(hit._row, amountCol).setValue(amount);
+      if (carryover && carryCol > 0) {
+        sheet.getRange(hit._row, carryCol).setValue(carryover);
+      }
     } else {
       appendRow(SHEETS.BUDGETS.name, {
-        month: yyyyMm, envelope: envelope, amount: Number(amounts[envelope]) || 0, carryover: 'reset'
+        month: yyyyMm, envelope: envelope, amount: amount, carryover: carryover || 'reset'
       });
     }
     touched++;
   });
+  invalidateReadCache(SHEETS.BUDGETS.name);
   return touched;
 }
 

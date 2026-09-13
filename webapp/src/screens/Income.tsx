@@ -94,7 +94,7 @@ export function Income({ workbook, ctx, today, onChanged }: { workbook: Workbook
           workbook={workbook}
           ctx={ctx}
           fields={[
-            { key: 'name', label: '이름 (예: 급여, 영주 레슨)' },
+            { key: 'name', label: '이름 (예: 급여, 레슨)' },
             { key: 'kind', label: '방식', options: [{ value: 'fixed', label: '고정 (매월 예정 행 생성)' }, { value: 'variable', label: '변동 (건별 기록 합산)' }] },
             { key: 'category', label: '카테고리 (변동 수입은 이 값으로 기록을 묶습니다)' },
             { key: 'expected_amount', label: '월 예상 금액', numeric: true },

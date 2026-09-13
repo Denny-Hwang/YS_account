@@ -1,7 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  daysInMonth, remainingDaysInclToday, envelopeStatus, formatStatusLine, formatUsd
+  daysInMonth, remainingDaysInclToday, envelopeStatus, formatStatusLine, formatStatusShort,
+  formatUsd, formatSigned, signalOf
 } = require('../src/Budget.js');
 
 function tx(date, amountUsd, extra) {
@@ -38,11 +39,13 @@ test('9/10, 예산 1000, 이전 지출 195.02, 오늘 0 → 가용액 38.33', ()
   assert.equal(s.remaining, 804.98);
   assert.equal(s.remainingDays, 21);
   assert.equal(s.allowanceToday, 38.33);
+  assert.equal(s.allowanceLeftToday, 38.33);
   assert.equal(s.plannedPaceToDate, 333.33);
   assert.equal(s.deltaVsPlan, 138.31);
+  assert.equal(s.signal, 'green');
 });
 
-test('오늘 지출은 spentToday 에만 들어가고 가용액을 낮추지 않는다', () => {
+test('오늘 지출은 하루치(allowanceToday)는 그대로 두고 오늘 남은(allowanceLeftToday)만 낮춘다', () => {
   const s = envelopeStatus({
     budget: 1000,
     envelope: '식료품',
@@ -52,7 +55,19 @@ test('오늘 지출은 spentToday 에만 들어가고 가용액을 낮추지 않
   assert.equal(s.spentToday, 40);
   assert.equal(s.spentTotal, 235.02);
   assert.equal(s.allowanceToday, 38.33);
+  assert.equal(s.allowanceLeftToday, -1.67);
   assert.equal(s.remaining, 764.98);
+});
+
+test('환불(음수 금액)은 같은 봉투의 지출을 줄인다', () => {
+  const s = envelopeStatus({
+    budget: 500,
+    envelope: '식료품',
+    today: '2026-09-10',
+    transactions: [tx('2026-09-02', 100), tx('2026-09-03', -20)]
+  });
+  assert.equal(s.spentTotal, 80);
+  assert.equal(s.remaining, 420);
 });
 
 test('status=deleted 행은 제외한다', () => {
@@ -65,12 +80,12 @@ test('status=deleted 행은 제외한다', () => {
   assert.equal(s.spentTotal, 100);
 });
 
-test('status=confirmed 행은 포함한다', () => {
+test('status=confirmed 행은 포함하고 expected 는 제외한다', () => {
   const s = envelopeStatus({
     budget: 500,
     envelope: '식료품',
     today: '2026-09-10',
-    transactions: [tx('2026-09-02', 100, { status: 'confirmed' })]
+    transactions: [tx('2026-09-02', 100, { status: 'confirmed' }), tx('2026-09-04', 50, { status: 'expected' })]
   });
   assert.equal(s.spentTotal, 100);
 });
@@ -109,7 +124,7 @@ test('수입 행은 지출로 세지 않는다', () => {
   assert.equal(s.spentTotal, 100);
 });
 
-test('예산 초과 시 음수를 허용한다', () => {
+test('예산 초과 시 음수를 허용하고 빨강이다', () => {
   const s = envelopeStatus({
     budget: 100,
     envelope: '식료품',
@@ -119,6 +134,15 @@ test('예산 초과 시 음수를 허용한다', () => {
   assert.equal(s.remaining, -150);
   assert.equal(s.allowanceToday, -7.14); // (100 - 250) / 21
   assert.ok(s.deltaVsPlan < 0);
+  assert.equal(s.signal, 'red');
+});
+
+test('신호등: 계획보다 앞서 썼지만 예산의 10% 이내면 노랑, 넘으면 빨강', () => {
+  assert.equal(signalOf({ budget: 1000, remaining: 500, deltaVsPlan: -50 }), 'yellow');
+  assert.equal(signalOf({ budget: 1000, remaining: 500, deltaVsPlan: -100 }), 'yellow');
+  assert.equal(signalOf({ budget: 1000, remaining: 500, deltaVsPlan: -101 }), 'red');
+  assert.equal(signalOf({ budget: 1000, remaining: 500, deltaVsPlan: 0 }), 'green');
+  assert.equal(signalOf({ budget: 0, remaining: 0, deltaVsPlan: 0 }), 'green');
 });
 
 test('말일에는 남은 일수가 1이다', () => {
@@ -134,23 +158,28 @@ test('formatUsd 는 천 단위 콤마와 음수를 처리한다', () => {
   assert.equal(formatUsd(771.3), '$771.30');
   assert.equal(formatUsd(1234.5), '$1,234.50');
   assert.equal(formatUsd(-12.3), '-$12.30');
+  assert.equal(formatSigned(12.3), '+$12.30');
+  assert.equal(formatSigned(-12.3), '-$12.30');
 });
 
-test('formatStatusLine 한 줄 형식', () => {
+test('formatStatusLine 은 신호등과 "오늘 남은" 을 앞에 둔다', () => {
   const s = envelopeStatus({
     budget: 1000, envelope: '식료품', today: '2026-09-10',
-    transactions: [tx('2026-09-02', 195.02)]
+    transactions: [tx('2026-09-02', 195.02), tx('2026-09-10', 20)]
   });
   assert.equal(
     formatStatusLine(s, '식료품'),
-    '식료품 잔액 $804.98 · 남은 21일 × $38.33/일 · 계획 대비 +$138.31'
+    '🟢 식료품 오늘 남은 $18.33 · 하루치 $38.33 · 잔액 $784.98 · 계획 대비 +$118.31'
   );
+  assert.equal(formatStatusShort(s, '식료품'), '🟢 식료품 오늘 $18.33');
 });
 
-test('계획보다 많이 썼으면 음수 표기', () => {
+test('계획보다 많이 썼으면 음수 표기와 빨강', () => {
   const s = envelopeStatus({
     budget: 1000, envelope: '식료품', today: '2026-09-10',
     transactions: [tx('2026-09-02', 500)]
   });
-  assert.ok(formatStatusLine(s, '식료품').includes('계획 대비 -$'));
+  const line = formatStatusLine(s, '식료품');
+  assert.ok(line.startsWith('🔴'));
+  assert.ok(line.includes('계획 대비 -$'));
 });

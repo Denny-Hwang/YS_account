@@ -33,7 +33,7 @@ test('Budget.js 를 ESM 으로 불러와 봇과 같은 값을 낸다', async () 
   assert.equal(status.allowanceToday, 38.33)
   assert.equal(
     budget.formatStatusLine(status, '식료품'),
-    '식료품 잔액 $804.98 · 남은 21일 × $38.33/일 · 계획 대비 +$138.31'
+    '🟢 식료품 오늘 남은 $38.33 · 하루치 $38.33 · 잔액 $804.98 · 계획 대비 +$138.31'
   )
 })
 
@@ -55,4 +55,32 @@ test('Classifier.js 를 ESM 으로 불러와 사전을 조회한다', async () =
     { keyword: '코스트코', envelope: '식료품', hit_count: 1 },
   ])
   assert.equal(hit.envelope, '식료품')
+})
+
+test('LedgerRules.js 를 ESM 으로 불러와 확정 대상과 상각을 계산한다', async () => {
+  const rules = await loadShared('LedgerRules.js')
+  const pick = rules.pickConfirmTarget(
+    [{ id: 'a', recurring_id: 'R06', status: 'confirmed' }, { id: 'b', recurring_id: 'R02', status: 'expected' }],
+    'R06'
+  )
+  assert.equal(pick.target, null)
+  assert.equal(pick.confirmedCount, 1)
+  assert.equal(rules.amortizeOnce(10000, 12, 500).newPrincipal, 9600)
+  assert.equal(rules.payoffMonths(1000, 0, 100), 10)
+})
+
+test('Budget.js 의 allowanceLeftToday 는 오늘 쓴 만큼 줄어든다', async () => {
+  const budget = await loadShared('Budget.js')
+  const status = budget.envelopeStatus({
+    budget: 1000,
+    envelope: '식료품',
+    today: '2026-09-10',
+    transactions: [
+      { date: '2026-09-02', type: 'expense', kind: 'variable', status: 'active', envelope: '식료품', amount_usd: 195.02 },
+      { date: '2026-09-10', type: 'expense', kind: 'variable', status: 'active', envelope: '식료품', amount_usd: 20 },
+    ],
+  })
+  assert.equal(status.allowanceToday, 38.33)
+  assert.equal(status.allowanceLeftToday, 18.33)
+  assert.equal(status.signal, 'green')
 })

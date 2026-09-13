@@ -76,7 +76,7 @@ export function Bullet({
   onClick?: () => void
 }) {
   const scale = Math.max(target, value, 1)
-  const fill = Math.min(value / scale, 1) * 100
+  const fill = Math.max(0, Math.min(value / scale, 1)) * 100
   const trackW = Math.min(target / scale, 1) * 100
   const over = target > 0 && value > target
   const paceX = pace !== undefined && target > 0 ? Math.min(pace / scale, 1) * 100 : null

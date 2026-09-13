@@ -1,9 +1,11 @@
 /**
  * Google Identity Services 토큰 클라이언트.
- * 액세스 토큰은 메모리에만 둔다. 새로고침하면 조용히 다시 받는다.
+ * 액세스 토큰은 메모리와 이 탭의 sessionStorage 에만 둔다(만료 1시간).
+ * 홈 화면 앱(PWA)에서 다시 열 때마다 동의 창이 뜨지 않게 하려는 것이다. 탭을 닫으면 사라진다.
  */
 
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
+const SESSION_KEY = 'family-budget.token.v1'
 
 interface TokenResponse {
   access_token?: string
@@ -35,8 +37,29 @@ declare global {
 
 let client: TokenClient | null = null
 let clientIdInUse = ''
-let token: { value: string; expiresAt: number } | null = null
+let token: { value: string; expiresAt: number } | null = restoreToken()
 let pending: ((r: TokenResponse) => void) | null = null
+
+function restoreToken(): { value: string; expiresAt: number } | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY)
+    if (!raw) return null
+    const saved = JSON.parse(raw) as { value?: string; expiresAt?: number }
+    if (!saved.value || !saved.expiresAt || saved.expiresAt - Date.now() < 60_000) return null
+    return { value: saved.value, expiresAt: saved.expiresAt }
+  } catch {
+    return null
+  }
+}
+
+function persistToken(): void {
+  try {
+    if (token) sessionStorage.setItem(SESSION_KEY, JSON.stringify(token))
+    else sessionStorage.removeItem(SESSION_KEY)
+  } catch {
+    // 저장이 막힌 브라우저(시크릿 창 등)에서는 메모리만 쓴다.
+  }
+}
 
 /** GIS 스크립트가 로드될 때까지 기다린다. */
 async function waitForGis(timeoutMs = 10000): Promise<GoogleOAuth2> {
@@ -101,18 +124,21 @@ export async function getAccessToken(clientId: string, interactive: boolean): Pr
     value: response.access_token,
     expiresAt: Date.now() + (response.expires_in ?? 3600) * 1000,
   }
+  persistToken()
   return token.value
 }
 
 /** 토큰을 버린다. 다음 요청에서 다시 받는다. */
 export function forgetToken(): void {
   token = null
+  persistToken()
 }
 
 /** 구글에서 권한까지 해제한다. */
 export async function signOut(): Promise<void> {
   const current = token?.value
   token = null
+  persistToken()
   if (!current) return
   const oauth2 = await waitForGis().catch(() => null)
   oauth2?.revoke(current)

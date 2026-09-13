@@ -158,14 +158,13 @@ function handleReceipt(chatId, userId, message, logRow) {
     parsed.merchantTextRaw = '';
   }
 
-  var pendingKey = String(chatId) + ':receipt:' + String(message.message_id);
-  CacheService.getScriptCache().put(pendingKey, JSON.stringify(parsed), PENDING_TTL_SECONDS);
-  var choices = getConfigList('envelopes').concat(['고정비', '수입']);
+  // 대기 키는 Log 행 번호다. 캐시가 만료돼도 Log 의 parsed_json 에서 복구된다.
+  updateLogResult(logRow, JSON.stringify(parsed), '영수증 분류 대기');
+  putPending(logRow, parsed);
   safeSend(
     chatId,
     '영수증에서 ' + formatUsd(parsed.amount_usd) + ' 를 읽었습니다. 분류를 골라 주세요.\n' +
       '금액이 다르면 직접 보내 주세요.',
-    buildChoiceKeyboard(pendingKey, choices)
+    buildIndexKeyboard('cls', logRow, canonicalChoices())
   );
-  updateLogResult(logRow, JSON.stringify(parsed), '영수증 분류 대기');
 }

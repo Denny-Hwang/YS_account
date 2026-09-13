@@ -3,7 +3,9 @@
  * 열 순서는 항상 시트의 헤더 행을 따른다. 코드에 열 번호를 박지 않는다.
  */
 
-import { appendValues, readTabs, updateRow, type SheetsContext, type Table } from './sheets'
+import { pickConfirmTarget } from '@shared/LedgerRules.js'
+import type { ParsedMessage } from '@shared/Parser.js'
+import { appendValues, readTabs, updateCells, type SheetsContext, type Table } from './sheets'
 
 export const TABS = {
   transactions: 'Transactions',
@@ -122,7 +124,10 @@ export async function appendTo(
   await appendValues(ctx, tab, rowToValues(workbook.tables[tab].headers, row))
 }
 
-/** 아무 탭의 한 행을 부분 수정한다. */
+/**
+ * 아무 탭의 한 행을 부분 수정한다. 값이 실제로 바뀐 열만 쓴다.
+ * 그 사이 다른 사람이 고친 다른 열은 건드리지 않는다.
+ */
 export async function patchIn(
   ctx: SheetsContext,
   workbook: Workbook,
@@ -131,12 +136,21 @@ export async function patchIn(
   patch: Record<string, unknown>
 ): Promise<void> {
   const headers = workbook.tables[tab].headers
-  const merged: Record<string, unknown> = { ...target, ...patch }
+  const merged: Record<string, unknown> = { ...patch }
   if (headers.includes('updated_at')) merged.updated_at = nowIso()
-  await updateRow(ctx, tab, target._row, rowToValues(headers, merged))
+  const cells: Array<{ col: number; value: string | number }> = []
+  headers.forEach((h, col) => {
+    if (!h || !(h in merged)) return
+    const v = merged[h]
+    const value: string | number = v === null || v === undefined ? '' : typeof v === 'number' ? v : String(v)
+    const before = target[h]
+    if (before !== undefined && String(before) === String(value)) return
+    cells.push({ col, value })
+  })
+  await updateCells(ctx, tab, target._row, cells)
 }
 
-/** 최신 스냅샷 날짜의 자산 합계(USD 환산). */
+/** 최신 스냅샷 날짜의 자산 합계(USD 환산). 행에 fx_usd_krw 가 있으면 그 환율을 쓴다. */
 export function latestAssetsTotal(workbook: Workbook): { date: string; total: number } {
   const dates = workbook.assets
     .map((row) => String(row.snapshot_date).slice(0, 10))
@@ -146,11 +160,17 @@ export function latestAssetsTotal(workbook: Workbook): { date: string; total: nu
   const fx = configNumber(workbook.config, 'fx_usd_krw', 1332)
   const total = workbook.assets
     .filter((row) => String(row.snapshot_date).slice(0, 10) === latest)
-    .reduce((acc, row) => {
-      const balance = Number(row.balance) || 0
-      return acc + (String(row.currency).trim().toUpperCase() === 'KRW' ? balance / fx : balance)
-    }, 0)
+    .reduce((acc, row) => acc + assetUsd(row, fx), 0)
   return { date: latest, total: Math.round(total * 100) / 100 }
+}
+
+/** 자산 행 하나의 USD 환산액. 스냅샷 당시 환율(fx_usd_krw 열)이 있으면 그 값을 쓴다. */
+export function assetUsd(row: SheetRow, fallbackFx: number): number {
+  const balance = Number(row.balance) || 0
+  if (String(row.currency).trim().toUpperCase() !== 'KRW') return balance
+  const rowFx = Number(row.fx_usd_krw)
+  const fx = Number.isFinite(rowFx) && rowFx > 0 ? rowFx : fallbackFx
+  return fx > 0 ? balance / fx : 0
 }
 
 /** 원장에 한 행을 추가한다. */
@@ -163,17 +183,14 @@ export async function appendTransaction(
   await appendValues(ctx, TABS.transactions, rowToValues(headers, row))
 }
 
-/** 원장 한 행을 수정한다. updated_at 은 자동으로 채운다. */
+/** 원장 한 행을 수정한다. 바뀐 열만 쓰고 updated_at 은 자동으로 채운다. */
 export async function patchTransaction(
   ctx: SheetsContext,
   workbook: Workbook,
   target: SheetRow,
   patch: Record<string, unknown>
 ): Promise<void> {
-  const headers = workbook.tables[TABS.transactions].headers
-  const merged: Record<string, unknown> = { ...target, ...patch }
-  if (headers.includes('updated_at')) merged.updated_at = nowIso()
-  await updateRow(ctx, TABS.transactions, target._row, rowToValues(headers, merged))
+  await patchIn(ctx, workbook, TABS.transactions, target, patch)
 }
 
 /** 원장 행을 soft delete 한다. 물리 삭제는 하지 않는다. */
@@ -216,8 +233,9 @@ export function isCounted(row: SheetRow): boolean {
 }
 
 /** Recurring 정의의 유형. type 열이 비어 있으면 expense(이전 시트와 호환). */
-export function recurringTypeOf(row: SheetRow): 'income' | 'expense' {
-  return String(row.type ?? '').trim().toLowerCase() === 'income' ? 'income' : 'expense'
+export function recurringTypeOf(row: SheetRow): 'income' | 'expense' | 'transfer' {
+  const t = String(row.type ?? '').trim().toLowerCase()
+  return t === 'income' || t === 'transfer' ? t : 'expense'
 }
 
 /** fromMonth 를 마지막으로 count 개월(오래된 순). */
@@ -239,4 +257,107 @@ export function nextIdFor(rows: SheetRow[], prefix: string): string {
     if (m) max = Math.max(max, Number(m[1]))
   })
   return `${prefix}${String(max + 1).padStart(2, '0')}`
+}
+
+export interface RecordResult {
+  mode: 'append' | 'confirm' | 'refund'
+  txId: string
+  name: string
+  type: string
+  envelope: string
+  nth: number
+}
+
+/**
+ * 파싱 결과를 봇과 같은 규칙으로 원장에 쓴다.
+ * - 사전이 kind=fixed 인 Recurring 항목을 가리키면 이번 달 expected 행을 확정한다(pickConfirmTarget).
+ *   expected 가 없으면(이미 확정됐으면) "이번 달 N번째" 로 confirmed 행을 새로 추가한다.
+ * - kind=variable 정의(레슨)는 보통 행처럼 추가하되 recurring_id 를 남긴다.
+ * - 그 밖에는 새 행. 환불은 음수 금액의 지출이다.
+ */
+export async function recordParsed(
+  ctx: SheetsContext,
+  workbook: Workbook,
+  parsed: ParsedMessage,
+  hit: Record<string, unknown> | null,
+  by: string
+): Promise<RecordResult> {
+  const month = parsed.date.slice(0, 7)
+  const now = nowIso()
+  const recurringId = String(hit?.recurring_id ?? '').trim()
+  const def = recurringId ? workbook.recurring.find((r) => String(r.id).trim() === recurringId) ?? null : null
+  const envelopes = configList(workbook.config, 'envelopes')
+
+  if (def && String(def.kind || 'fixed').trim() === 'fixed') {
+    const pick = pickConfirmTarget(monthTransactions(workbook, month), recurringId)
+    const name = String(def.name || recurringId)
+    const type = recurringTypeOf(def)
+    if (pick.target) {
+      await patchTransaction(ctx, workbook, pick.target, {
+        amount: parsed.amount,
+        currency: parsed.currency,
+        amount_usd: parsed.amount_usd ?? 0,
+        date: parsed.date,
+        status: 'confirmed',
+        payer: by,
+        updated_by: by,
+      })
+      return { mode: 'confirm', txId: String(pick.target.id), name, type, envelope: '', nth: 1 }
+    }
+    const txId = newTxId()
+    await appendTransaction(ctx, workbook, {
+      id: txId,
+      date: parsed.date,
+      type,
+      kind: 'fixed',
+      category: String(def.category ?? ''),
+      envelope: '',
+      merchant: name,
+      amount: parsed.amount,
+      currency: parsed.currency,
+      amount_usd: parsed.amount_usd ?? 0,
+      recurring_id: recurringId,
+      status: 'confirmed',
+      memo: pick.confirmedCount > 0 ? `이번 달 ${pick.confirmedCount + 1}번째` : '',
+      payer: by,
+      source: 'web',
+      created_at: now,
+      updated_at: now,
+      updated_by: by,
+    })
+    return { mode: 'confirm', txId, name, type, envelope: '', nth: pick.confirmedCount + 1 }
+  }
+
+  const type = def ? recurringTypeOf(def) : String(hit?.type ?? parsed.type ?? 'expense')
+  // 수입·저축은 봉투가 없다. 지출인데 사전에 없으면 첫 봉투로 넣고 원장에서 고친다.
+  const envelope = type === 'expense' ? String(hit?.envelope ?? (envelopes[0] ?? '')) : ''
+  const txId = newTxId()
+  await appendTransaction(ctx, workbook, {
+    id: txId,
+    date: parsed.date,
+    type,
+    kind: def ? 'variable' : String(hit?.kind ?? 'variable'),
+    category: def ? String(def.category ?? '') : String(hit?.category ?? ''),
+    envelope,
+    merchant: parsed.merchantTextRaw || parsed.merchantText,
+    amount: parsed.amount,
+    currency: parsed.currency,
+    amount_usd: parsed.amount_usd ?? 0,
+    recurring_id: def ? recurringId : '',
+    status: 'active',
+    memo: parsed.refund ? '환불' : parsed.confidence === 'low' ? parsed.memo : '',
+    payer: by,
+    source: 'web',
+    created_at: now,
+    updated_at: now,
+    updated_by: by,
+  })
+  return {
+    mode: parsed.refund ? 'refund' : 'append',
+    txId,
+    name: parsed.merchantTextRaw || parsed.merchantText || '항목',
+    type,
+    envelope,
+    nth: 0,
+  }
 }

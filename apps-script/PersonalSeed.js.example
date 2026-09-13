@@ -11,26 +11,42 @@
  * Recurring 의 active 는 건드리지 않는다. 시트에서 끈 항목은 꺼진 채로 남는다.
  */
 
-/** 유동비 봉투와 월 예산(USD). 키 순서가 봇 버튼 순서다. */
+/**
+ * 유동비 봉투와 월 예산(USD). 키 순서가 봇 버튼 순서다.
+ * 값은 숫자(금액)거나 {amount, carryover} 다. carryover=carry 면 남은 돈이 다음 달로 넘어간다.
+ * - 예비비: 초과분을 흡수하는 봉투(Config.overspend_envelope). carry 가 자연스럽다.
+ * - 연간비: 보험·명절·여행처럼 가끔 크게 나가는 돈을 매달 조금씩 모으는 싱킹 펀드. 반드시 carry.
+ */
 var PERSONAL_ENVELOPES = {
   '식료품': 1000,
   '생필품': 100,
-  '예비비': 100
+  '예비비': { amount: 100, carryover: 'carry' },
+  '연간비': { amount: 150, carryover: 'carry' }
 };
 
-/** 고정비. SHEETS.RECURRING 헤더와 같은 키를 쓴다. active 는 일부러 뺐다. */
+/**
+ * 고정 항목. SHEETS.RECURRING 헤더와 같은 키를 쓴다. active 는 일부러 뺐다.
+ * type: expense 고정비 / income 수입원 / transfer 저축(먼저 저축).
+ */
 var PERSONAL_RECURRING = [
-  { id: 'R01', name: '하우스 렌트', kind: 'fixed', category: '주거비', expected_amount: 1000, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 0, notes: '' },
-  { id: 'R02', name: '관리비', kind: 'fixed', category: '주거비', expected_amount: 100, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 15, notes: '' },
-  { id: 'R05', name: '월 구독료', kind: 'fixed', category: '구독', expected_amount: 50, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 0, notes: '서비스A 20, 서비스B 30' },
-  { id: 'R08', name: '십일조', kind: 'fixed', category: '십일조', expected_amount: 100, currency: 'USD', due_day: 26, amount_rule: 'income_pct:10', tolerance_pct: 0, notes: '수입의 10%. 수입 기록이 없는 달은 expected_amount' },
-  { id: 'R12', name: '한국 대출 상환', kind: 'fixed', category: '부채상환', expected_amount: 1000000, currency: 'KRW', due_day: 1, amount_rule: 'fixed', tolerance_pct: 5, notes: '원화 고정' }
+  { id: 'R01', name: '렌트', kind: 'fixed', category: '주거비', expected_amount: 1000, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 0, notes: '', type: 'expense' },
+  { id: 'R02', name: '관리비', kind: 'fixed', category: '주거비', expected_amount: 100, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 15, notes: '', type: 'expense' },
+  { id: 'R04', name: '구독료', kind: 'fixed', category: '구독', expected_amount: 50, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 0, notes: '서비스A 20, 서비스B 30', type: 'expense' },
+  { id: 'R07', name: '부채상환', kind: 'fixed', category: '부채상환', expected_amount: 500, currency: 'USD', due_day: 15, amount_rule: 'fixed', tolerance_pct: 0, notes: 'Debts D02 와 연결', type: 'expense' },
+  { id: 'R08', name: '기부', kind: 'fixed', category: '기부', expected_amount: 100, currency: 'USD', due_day: 26, amount_rule: 'income_pct:10', tolerance_pct: 0, notes: '수입의 10%. 수입 기록이 없는 달은 expected_amount', type: 'expense' },
+  { id: 'R12', name: '한국 대출 상환', kind: 'fixed', category: '부채상환', expected_amount: 1000000, currency: 'KRW', due_day: 1, amount_rule: 'fixed', tolerance_pct: 5, notes: '원화 고정. Debts D01 과 연결', type: 'expense' },
+  { id: 'S01', name: '저축', kind: 'fixed', category: '저축', expected_amount: 300, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 0, notes: '먼저 저축. 월초에 옮기고 "저축 300" 으로 확정', type: 'transfer' },
+  { id: 'I01', name: '급여', kind: 'fixed', category: '급여', expected_amount: 3000, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 0, notes: '2주급 × 26 ÷ 12', type: 'income' },
+  { id: 'I02', name: '레슨', kind: 'variable', category: '레슨', expected_amount: 200, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 0, notes: '건별 기록의 합', type: 'income' }
 ];
 
-/** 부채. SHEETS.DEBTS 헤더와 같은 키. principal 과 monthly_payment 는 currency 기준. */
+/**
+ * 부채. SHEETS.DEBTS 헤더와 같은 키. principal 과 monthly_payment 는 currency 기준.
+ * recurring_id 를 적으면 그 고정비를 확정할 때 원금과 남은 회차가 자동으로 줄어든다.
+ */
 var PERSONAL_DEBTS = [
-  { id: 'D01', name: '학자금', principal: 1000000, rate_pct: 3.0, monthly_payment: 50000, remaining_count: 20, currency: 'KRW', notes: '기준일 2026-01-01' },
-  { id: 'D02', name: '신용대출', principal: 5000, rate_pct: 10.0, monthly_payment: 500, remaining_count: 10, currency: 'USD', notes: '' }
+  { id: 'D01', name: '학자금', principal: 1000000, rate_pct: 3.0, monthly_payment: 50000, remaining_count: 20, currency: 'KRW', notes: '기준일 2026-01-01', recurring_id: 'R12' },
+  { id: 'D02', name: '신용대출', principal: 5000, rate_pct: 10.0, monthly_payment: 500, remaining_count: 10, currency: 'USD', notes: '', recurring_id: 'R07' }
 ];
 
 /** 위 값을 시트에 적용한다. */
@@ -53,11 +69,12 @@ function applyPersonalDefaults() {
       updateRowById(SHEETS.RECURRING.name, r.id, { active: 'Y' });
     }
   });
-  lines.push('고정비 추가 ' + rec.added + ' / 갱신 ' + rec.updated);
+  lines.push('고정 항목 추가 ' + rec.added + ' / 갱신 ' + rec.updated);
   var debt = { added: 0, updated: 0 };
   PERSONAL_DEBTS.forEach(function (row) { debt[upsertRowById(SHEETS.DEBTS.name, row)]++; });
   lines.push('부채 추가 ' + debt.added + ' / 갱신 ' + debt.updated);
   clearConfigCache();
+  invalidateReadCache();
   var msg = lines.join(' · ');
   Logger.log(msg);
   return msg;

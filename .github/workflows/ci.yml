@@ -1,0 +1,47 @@
+name: 검증
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - name: Apps Script 순수 모듈 테스트
+        working-directory: apps-script
+        run: npm test
+
+      - name: GAS 전용 파일 문법 검사
+        working-directory: apps-script
+        run: for f in src/*.js; do node --check "$f"; done
+
+      - name: 비밀값 유출 점검
+        run: |
+          hits=$(git grep -nE "[0-9]{9,10}:[A-Za-z0-9_-]{35}|AKfycb|1[A-Za-z0-9_-]{40,}" \
+            -- ':!*package-lock.json' ':!CLAUDE.md' ':!docs/SETUP.md' ':!claude/prompts/*' ':!.github/workflows/ci.yml' || true)
+          if [ -n "$hits" ]; then echo "$hits"; echo "비밀값으로 보이는 문자열이 있습니다."; exit 1; fi
+
+      - name: 웹앱 의존성 설치
+        working-directory: webapp
+        run: npm ci
+
+      - name: 공유 모듈 브리지 테스트
+        working-directory: webapp
+        run: npm test
+
+      - name: 웹앱 타입 검사와 빌드
+        working-directory: webapp
+        run: npm run build

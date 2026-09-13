@@ -3,7 +3,8 @@
  * "실제" 는 status 가 active 또는 confirmed 인 행만 센다. expected 는 예정이고 deleted 는 없는 것이다.
  */
 import { daysInMonth } from '@shared/Budget.js'
-import { budgetAmount, configList, configNumber, isCounted, monthsBack, recurringTypeOf, type SheetRow, type Workbook } from './ledger'
+import { payoffMonths } from '@shared/LedgerRules.js'
+import { assetUsd, budgetAmount, configList, configNumber, isCounted, latestAssetsTotal, monthsBack, recurringTypeOf, type SheetRow, type Workbook } from './ledger'
 
 const r2 = (n: number) => Math.round(n * 100) / 100
 const usd = (row: SheetRow) => Number(row.amount_usd) || 0
@@ -19,7 +20,7 @@ export interface MonthTotals {
   net: number
 }
 
-/** 월별 수입·지출·고정·유동·순저축. */
+/** 월별 수입·지출·고정·유동·순저축. transfer(저축 이동)는 어느 쪽도 아니다. */
 export function monthlyTotals(wb: Workbook, months: string[]): MonthTotals[] {
   const map = new Map<string, MonthTotals>()
   months.forEach((m) => map.set(m, { month: m, income: 0, expense: 0, fixed: 0, variable: 0, net: 0 }))
@@ -46,6 +47,15 @@ export function averageNet(totals: MonthTotals[]): number {
   const active = totals.filter((t) => t.income > 0 || t.expense > 0)
   if (!active.length) return 0
   return r2(active.reduce((a, t) => a + t.net, 0) / active.length)
+}
+
+/** 그 달 수입 합(USD). income_pct 규칙의 기준이다. */
+export function monthIncome(wb: Workbook, month: string): number {
+  return r2(
+    wb.transactions
+      .filter((t) => isCounted(t) && monthOf(t) === month && String(t.type) === 'income')
+      .reduce((a, t) => a + usd(t), 0)
+  )
 }
 
 /** 봉투 하나의 월별 유동비 지출. */
@@ -155,33 +165,41 @@ export interface RecurringActual {
   status: string
 }
 
-function expectedUsdOf(wb: Workbook, row: SheetRow): number {
-  const raw = Number(row.expected_amount) || 0
+/**
+ * Recurring 정의의 그 달 예상 금액(USD).
+ * amount_rule 이 income_pct:N 이면 그 달 수입의 N% (수입이 없으면 expected_amount). 봇과 같은 규칙.
+ */
+export function expectedUsdOf(wb: Workbook, row: SheetRow, month: string): number {
   const fx = configNumber(wb.config, 'fx_usd_krw', 1332)
+  const pct = /^income_pct:(\d+(?:\.\d+)?)$/.exec(String(row.amount_rule ?? '').trim())
+  if (pct) {
+    const computed = r2((monthIncome(wb, month) * Number(pct[1])) / 100)
+    if (computed > 0) return computed
+  }
+  const raw = Number(row.expected_amount) || 0
   return String(row.currency).trim().toUpperCase() === 'KRW' ? r2(raw / fx) : raw
 }
 
 /**
  * Recurring 정의별 이번 달 실제.
- * fixed 는 recurring_id 로 묶인 행, variable 은 같은 category 의 기록을 합한다.
+ * recurring_id 로 묶인 행을 합한다. variable 정의는 같은 category 의 기록도 합한다(사전이 category 만 남긴 경우).
  */
-export function recurringActuals(wb: Workbook, month: string, type: 'income' | 'expense'): RecurringActual[] {
+export function recurringActuals(wb: Workbook, month: string, type: 'income' | 'expense' | 'transfer'): RecurringActual[] {
   return wb.recurring
     .filter((row) => recurringTypeOf(row) === type)
     .map((row) => {
       const id = String(row.id).trim()
       const kind = String(row.kind || 'fixed').trim()
       const category = String(row.category).trim()
-      let hits: SheetRow[]
-      if (kind === 'fixed') {
-        hits = wb.transactions.filter((t) => monthOf(t) === month && String(t.recurring_id).trim() === id && String(t.status) !== 'deleted')
-      } else {
-        hits = wb.transactions.filter((t) => isCounted(t) && monthOf(t) === month && String(t.type) === type && String(t.category).trim() === category)
-      }
+      const hits = wb.transactions.filter((t) => {
+        if (monthOf(t) !== month || String(t.status) === 'deleted') return false
+        if (String(t.recurring_id).trim() === id) return true
+        return kind !== 'fixed' && isCounted(t) && String(t.type) === type && !String(t.recurring_id).trim() && String(t.category).trim() === category
+      })
       const counted = hits.filter(isCounted)
       const actual = r2(counted.reduce((a, t) => a + usd(t), 0))
       const status = counted.length ? String(counted[counted.length - 1].status) : hits.length ? String(hits[hits.length - 1].status) : ''
-      return { row, id, name: String(row.name) || id, kind, category, expectedUsd: expectedUsdOf(wb, row), actualUsd: actual, status }
+      return { row, id, name: String(row.name) || id, kind, category, expectedUsd: expectedUsdOf(wb, row, month), actualUsd: actual, status }
     })
 }
 
@@ -189,15 +207,46 @@ export function recurringActuals(wb: Workbook, month: string, type: 'income' | '
 export function incomePlan(wb: Workbook, month: string) {
   const sources = recurringActuals(wb, month, 'income').filter((s) => String(s.row.active).trim().toUpperCase() !== 'N')
   const expectedTotal = r2(sources.reduce((a, s) => a + s.expectedUsd, 0))
-  const actualTotal = r2(
-    wb.transactions
-      .filter((t) => isCounted(t) && monthOf(t) === month && String(t.type) === 'income')
-      .reduce((a, t) => a + usd(t), 0)
-  )
+  const actualTotal = monthIncome(wb, month)
   return { sources, expectedTotal, actualTotal }
 }
 
-/** 부채 목록을 USD 로 맞추고 상환 종료 월을 계산한다. */
+/** 저축(type=transfer) 계획과 실행. 먼저 저축의 진행률이다. */
+export function savingsPlan(wb: Workbook, month: string) {
+  const items = recurringActuals(wb, month, 'transfer').filter((s) => String(s.row.active).trim().toUpperCase() !== 'N')
+  return {
+    items,
+    expected: r2(items.reduce((a, s) => a + s.expectedUsd, 0)),
+    actual: r2(items.reduce((a, s) => a + s.actualUsd, 0)),
+  }
+}
+
+/** active 고정비(type=expense, kind=fixed)의 월 예상 합(USD). 비상금 목표의 기준이다. */
+export function fixedMonthlyExpense(wb: Workbook, month: string): number {
+  return r2(
+    wb.recurring
+      .filter((r) => recurringTypeOf(r) === 'expense' && String(r.kind || 'fixed').trim() === 'fixed' && String(r.active).trim().toUpperCase() === 'Y')
+      .reduce((a, r) => a + expectedUsdOf(wb, r, month), 0)
+  )
+}
+
+/**
+ * 비상금: 고정비 N개월치(Config.emergency_fund_months, 기본 3)를 목표로,
+ * 최신 자산 스냅샷이 몇 개월분인지 본다.
+ */
+export function emergencyFund(wb: Workbook, month: string) {
+  const months = configNumber(wb.config, 'emergency_fund_months', 3)
+  const monthly = fixedMonthlyExpense(wb, month)
+  const assets = latestAssetsTotal(wb)
+  const target = r2(monthly * months)
+  const covered = monthly > 0 ? r2(assets.total / monthly) : null
+  return { months, monthly, target, assets: assets.total, assetsDate: assets.date, covered }
+}
+
+/**
+ * 부채 목록을 USD 로 맞추고 상환 종료를 계산한다.
+ * payoffMonths 는 이자를 반영한 값이고 remaining 은 시트의 남은 회차다. 둘이 다르면 이자를 과소평가한 것이다.
+ */
 export function debtSchedule(wb: Workbook, today: string) {
   const fx = configNumber(wb.config, 'fx_usd_krw', 1332)
   const toUsd = (row: SheetRow, key: string) => {
@@ -205,10 +254,15 @@ export function debtSchedule(wb: Workbook, today: string) {
     return String(row.currency).trim().toUpperCase() === 'KRW' ? r2(v / fx) : v
   }
   const [y, m] = today.split('-').map(Number)
+  const endOf = (months: number) => {
+    const end = new Date(Date.UTC(y, m - 1 + months, 1))
+    return `${end.getUTCFullYear()}-${String(end.getUTCMonth() + 1).padStart(2, '0')}`
+  }
   return wb.debts
     .map((row) => {
       const remaining = Number(row.remaining_count) || 0
-      const end = new Date(Date.UTC(y, m - 1 + remaining, 1))
+      const rate = Number(row.rate_pct) || 0
+      const amortized = payoffMonths(Number(row.principal) || 0, rate, Number(row.monthly_payment) || 0)
       return {
         row,
         id: String(row.id),
@@ -216,11 +270,24 @@ export function debtSchedule(wb: Workbook, today: string) {
         principalUsd: toUsd(row, 'principal'),
         monthlyUsd: toUsd(row, 'monthly_payment'),
         remaining,
-        rate: Number(row.rate_pct) || 0,
-        payoff: `${end.getUTCFullYear()}-${String(end.getUTCMonth() + 1).padStart(2, '0')}`,
+        amortized,
+        rate,
+        currency: String(row.currency || 'USD').trim().toUpperCase(),
+        payoff: endOf(amortized ?? remaining),
+        linked: String(row.recurring_id ?? '').trim(),
       }
     })
     .sort((a, b) => b.principalUsd - a.principalUsd)
+}
+
+/** 부채 요약: 가중 평균 이율, 이율이 가장 높은 부채(눈사태 대상), 원화 부채 노출. */
+export function debtOverview(debts: ReturnType<typeof debtSchedule>) {
+  const totalPrincipal = debts.reduce((a, d) => a + d.principalUsd, 0)
+  const totalMonthly = debts.reduce((a, d) => a + d.monthlyUsd, 0)
+  const weightedRate = totalPrincipal > 0 ? debts.reduce((a, d) => a + d.rate * d.principalUsd, 0) / totalPrincipal : 0
+  const avalanche = debts.filter((d) => d.principalUsd > 0).sort((a, b) => b.rate - a.rate)[0] ?? null
+  const krwPrincipalUsd = debts.filter((d) => d.currency === 'KRW').reduce((a, d) => a + d.principalUsd, 0)
+  return { totalPrincipal: r2(totalPrincipal), totalMonthly: r2(totalMonthly), weightedRate, avalanche, krwPrincipalUsd: r2(krwPrincipalUsd) }
 }
 
 /** 자산 스냅샷 날짜별 합계(USD). 오래된 순. */
@@ -230,8 +297,7 @@ export function assetsHistory(wb: Workbook) {
   wb.assets.forEach((row) => {
     const d = String(row.snapshot_date).slice(0, 10)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return
-    const bal = Number(row.balance) || 0
-    acc.set(d, (acc.get(d) ?? 0) + (String(row.currency).trim().toUpperCase() === 'KRW' ? bal / fx : bal))
+    acc.set(d, (acc.get(d) ?? 0) + assetUsd(row, fx))
   })
   return Array.from(acc.entries())
     .map(([date, total]) => ({ date, total: r2(total) }))

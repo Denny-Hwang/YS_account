@@ -1,6 +1,7 @@
 /**
- * Recurring.js — 고정비 자동 기장. 매월 Recurring 정의대로 expected 행을 만들어 둔다.
+ * Recurring.js — 고정 항목 자동 기장. 매월 Recurring 정의대로 expected 행을 만들어 둔다.
  * 봇으로 실제 금액이 들어오면 Ledger.confirmRecurring 이 그 행을 confirmed 로 바꾼다.
+ * type 이 income 이면 수입원, transfer 면 저축(먼저 저축) 항목이다.
  */
 
 /** 'YYYY-MM' 과 일자로 날짜 문자열을 만든다. 말일을 넘으면 말일로 맞춘다. */
@@ -62,7 +63,7 @@ function toUsd(amount, currency) {
 
 /** active=Y 인 Recurring 정의 목록. */
 function activeRecurring() {
-  return readAll(SHEETS.RECURRING.name).filter(function (row) {
+  return readAllCached(SHEETS.RECURRING.name).filter(function (row) {
     return String(row.active).trim().toUpperCase() === 'Y';
   });
 }
@@ -70,11 +71,59 @@ function activeRecurring() {
 /** Recurring 정의의 유형. type 열이 비어 있으면 expense 다(이전 시트와 호환). */
 function recurringType(definition) {
   var t = String(definition.type || '').trim().toLowerCase();
-  return t === 'income' ? 'income' : 'expense';
+  if (t === 'income' || t === 'transfer') {
+    return t;
+  }
+  return 'expense';
+}
+
+/** active=Y, kind=fixed, type=expense 인 고정비의 월 예상 합계(USD). 비상금 목표의 기준이다. */
+function fixedMonthlyExpenseUsd(month) {
+  var total = 0;
+  activeRecurring().forEach(function (definition) {
+    if (recurringType(definition) !== 'expense') {
+      return;
+    }
+    if (String(definition.kind || 'fixed').trim() !== 'fixed') {
+      return;
+    }
+    total += toUsd(recurringExpectedAmount(definition, month), definition.currency);
+  });
+  return roundCents(total);
 }
 
 /**
- * 그 달의 고정비 expected 행을 만든다. 멱등: 이미 있으면 건너뛴다.
+ * 그 달의 저축(type=transfer) 계획과 실행.
+ * @param {string} month
+ * @return {{expected: number, actual: number, items: !Array<{name: string, expected: number, actual: number}>}}
+ */
+function savingsPlan(month) {
+  var rows = monthTransactions(month);
+  var items = [];
+  var expected = 0;
+  var actual = 0;
+  activeRecurring().forEach(function (definition) {
+    if (recurringType(definition) !== 'transfer') {
+      return;
+    }
+    var id = String(definition.id).trim();
+    var plan = toUsd(recurringExpectedAmount(definition, month), definition.currency);
+    var done = 0;
+    rows.forEach(function (row) {
+      var status = String(row.status).trim();
+      if (String(row.recurring_id || '').trim() === id && (status === 'confirmed' || status === 'active')) {
+        done += Number(row.amount_usd) || 0;
+      }
+    });
+    expected += plan;
+    actual += done;
+    items.push({ name: String(definition.name || id), expected: plan, actual: roundCents(done) });
+  });
+  return { expected: roundCents(expected), actual: roundCents(actual), items: items };
+}
+
+/**
+ * 그 달의 고정 항목 expected 행을 만든다. 멱등: 이미 있으면 건너뛴다.
  * @param {string=} yyyyMm 생략하면 이번 달
  * @return {number} 새로 추가한 행 수
  */
@@ -166,14 +215,14 @@ function recomputeIncomePct(yyyyMm) {
 }
 
 /**
- * 아직 확정되지 않은(status=expected) 고정비 목록.
+ * 아직 확정되지 않은(status=expected) 고정 항목 목록.
  * @param {string=} yyyyMm
- * @return {!Array<{id: string, name: string, amount_usd: number, date: string}>}
+ * @return {!Array<{id: string, name: string, amount_usd: number, date: string, type: string}>}
  */
 function unconfirmedRecurring(yyyyMm) {
   var month = yyyyMm || currentMonthStr();
   var names = {};
-  readAll(SHEETS.RECURRING.name).forEach(function (row) {
+  readAllCached(SHEETS.RECURRING.name).forEach(function (row) {
     names[String(row.id).trim()] = String(row.name || row.id);
   });
   return monthTransactions(month)
@@ -187,7 +236,8 @@ function unconfirmedRecurring(yyyyMm) {
         id: id,
         name: names[id] || id,
         amount_usd: Number(row.amount_usd) || 0,
-        date: toDateStr(row.date)
+        date: toDateStr(row.date),
+        type: String(row.type || 'expense')
       };
     });
 }
