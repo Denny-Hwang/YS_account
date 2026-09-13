@@ -39,7 +39,20 @@ function applyPersonalDefaults() {
   lines.push('봉투 ' + setEnvelopes(Object.keys(PERSONAL_ENVELOPES)) + '개');
   lines.push('예산 ' + applyBudgetAmounts(currentMonthStr(), PERSONAL_ENVELOPES) + '행');
   var rec = { added: 0, updated: 0 };
-  PERSONAL_RECURRING.forEach(function (row) { rec[upsertRowById(SHEETS.RECURRING.name, row)]++; });
+  PERSONAL_RECURRING.forEach(function (row) {
+    var result = upsertRowById(SHEETS.RECURRING.name, row);
+    rec[result]++;
+    if (result === 'added') {
+      // 새 행은 켠 상태로 시작한다. 기존 행의 active 는 건드리지 않는다.
+      updateRowById(SHEETS.RECURRING.name, row.id, { active: 'Y' });
+    }
+  });
+  // active 가 비어 있는 행은 켠다. 예전 버전으로 추가돼 꺼진 채 남은 행을 바로잡는다.
+  readAll(SHEETS.RECURRING.name).forEach(function (r) {
+    if (String(r.active === undefined ? '' : r.active).trim() === '') {
+      updateRowById(SHEETS.RECURRING.name, r.id, { active: 'Y' });
+    }
+  });
   lines.push('고정비 추가 ' + rec.added + ' / 갱신 ' + rec.updated);
   var debt = { added: 0, updated: 0 };
   PERSONAL_DEBTS.forEach(function (row) { debt[upsertRowById(SHEETS.DEBTS.name, row)]++; });
