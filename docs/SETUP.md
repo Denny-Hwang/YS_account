@@ -478,3 +478,62 @@ OCR 언어는 Config 에 `ocr_language` 키를 넣어 바꿀 수 있다(기본 `
 - 편집은 바뀐 셀만 쓴다. 두 사람이 동시에 다른 열을 고쳐도 서로 되돌리지 않는다.
 - 부채 화면은 이자를 반영한 상환 종료와 "이율 높은 것 먼저" 를 보여 준다. 자산 스냅샷에 그날 환율을 적을 수 있다.
 - 아이폰 홈 화면 앱에서 로그인 창이 매번 뜨면 알려 달라. 토큰을 sessionStorage 에 두어 줄였지만 실기기 확인이 필요하다.
+
+---
+
+## 부록 — 편집기에서 실행하는 함수와 파일
+
+Apps Script 편집기 왼쪽 파일 목록에서 파일을 고른 뒤, 상단 함수 드롭다운에서 함수를 선택해 실행한다.
+편집기는 `.js` 를 `.gs` 로 표시하므로 `Setup.js` 는 `Setup.gs` 로 보인다.
+
+### 설치·설정
+
+| 함수 | 파일 | 하는 일 |
+|---|---|---|
+| `runSetupAll` | `Setup.gs` | 탭 생성 + 시드 + Monthly_View·Dashboard 그리기. 최초 1회 |
+| `setupSheet` | `Setup.gs` | 탭과 헤더만 맞춘다. 새 열이 생겼을 때 실행 |
+| `applyPersonalDefaults` | `PersonalSeed.gs` | 우리 집 봉투·고정 항목·부채를 시트에 반영 |
+| `checkPaydays` | `PersonalSeed.gs` | 2주급 급여일을 1년치 로그로 확인. 시트를 건드리지 않는다 |
+| `setEnvelopes` | `Setup.gs` | 봉투 목록 변경 |
+| `applyBudgetAmounts` | `Setup.gs` | 특정 월의 봉투 예산 설정 |
+| `clearConfigCache` | `Config.gs` | Config 값을 바꾼 직후 캐시 비우기 |
+
+### 봇 연결
+
+| 함수 | 파일 | 하는 일 |
+|---|---|---|
+| `setWebhook` | `Telegram.gs` | 웹훅 등록. 웹 앱 배포 후 실행 |
+| `getWebhookInfo` | `Telegram.gs` | 웹훅 상태와 마지막 오류 확인 |
+| `deleteWebhook` | `Telegram.gs` | 웹훅 해제 |
+
+### 트리거와 정기 작업
+
+| 함수 | 파일 | 하는 일 |
+|---|---|---|
+| `installTriggers` | `Jobs.gs` | 트리거 4개 재설치 |
+| `dailySummary` | `Jobs.gs` | 아침 요약을 지금 보낸다 |
+| `weeklyDigest` | `Jobs.gs` | 주간 결산. 지정 요일이 아니면 아무것도 안 한다 |
+| `monthlyOpen` | `Jobs.gs` | 이번 달 예산·예정 행 준비 |
+| `monthlyClose` | `Jobs.gs` | 월 마감 보고. 말일이 아니면 아무것도 안 한다 |
+| `ensureMonthOpened` | `Jobs.gs` | 이번 달이 안 열렸으면 연다(멱등) |
+| `postMonthlyRecurring` | `Recurring.gs` | 이번 달 고정 항목 예정 행 생성 |
+| `recomputeIncomePct` | `Recurring.gs` | 수입 비율 항목 다시 계산 |
+
+### 화면 다시 그리기
+
+| 함수 | 파일 | 하는 일 |
+|---|---|---|
+| `buildMonthlyView` | `Views.gs` | Monthly_View 탭 재생성 |
+| `buildDashboard` | `Views.gs` | Dashboard 탭 재생성 |
+
+### 선택 기능
+
+| 함수 | 파일 | 하는 일 |
+|---|---|---|
+| `previewMigrationSource` | `Migration.gs` | 옛 탭의 헤더와 첫 세 행 확인 |
+| `migrateAll` | `Migration.gs` | 이관 미리보기. 쓰지 않는다 |
+| `migrateAllCommit` | `Migration.gs` | 실제 이관 |
+| `migrationReport` | `Migration.gs` | 이관된 행 수 |
+| `reconcileLatest` | `Reconcile.gs` | Drive 의 최신 CSV 와 원장 대조 |
+
+`doPost`(`Webhook.gs`)는 Telegram 이 호출하는 진입점이라 편집기에서 직접 실행하지 않는다.
