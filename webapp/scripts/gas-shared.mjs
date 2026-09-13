@@ -6,6 +6,10 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 /** Apps Script 순수 모듈이 들어 있는 폴더. */
 export const sharedDir = path.resolve(here, '../../apps-script/src')
 
+/** 경로 구분자를 슬래시로 통일한다. Windows 에서 Vite 가 넘기는 id 는 슬래시, path.resolve 는 백슬래시다. */
+const toPosix = (p) => p.replace(/\\/g, '/')
+const sharedDirPosix = toPosix(sharedDir)
+
 /**
  * GAS 용 ES5 파일을 ESM 으로 바꾼다.
  * 그 파일들은 GAS 가 전역 스코프에 이어 붙이는 형태라 export 문이 없다.
@@ -26,8 +30,8 @@ export function gasSharedModules() {
     name: 'gas-shared-modules',
     enforce: 'pre',
     transform(code, id) {
-      const file = id.split('?')[0]
-      if (!file.startsWith(sharedDir)) return null
+      const file = toPosix(id.split('?')[0])
+      if (!file.startsWith(sharedDirPosix)) return null
       const out = toEsm(code)
       return out ? { code: out, map: null } : null
     },
