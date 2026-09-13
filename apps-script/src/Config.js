@@ -18,9 +18,11 @@ var SHEETS = {
   },
   RECURRING: {
     name: 'Recurring',
+    // extendable: 기존 탭에 type 열이 없으면 마지막 열 뒤에 붙인다. 비어 있으면 expense 로 본다.
+    extendable: true,
     headers: [
       'id', 'name', 'kind', 'category', 'expected_amount', 'currency', 'due_day',
-      'amount_rule', 'tolerance_pct', 'active', 'notes'
+      'amount_rule', 'tolerance_pct', 'active', 'notes', 'type'
     ]
   },
   BUDGETS: {

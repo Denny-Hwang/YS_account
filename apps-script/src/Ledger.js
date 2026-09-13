@@ -239,7 +239,7 @@ function confirmRecurring(recurringId, parsed, meta) {
     return {
       txId: target.id,
       mode: 'confirm',
-      type: 'expense',
+      type: definition ? recurringType(definition) : 'expense',
       kind: 'fixed',
       category: String(target.category || (definition ? definition.category : '')),
       envelope: String(target.envelope || ''),
@@ -253,7 +253,7 @@ function confirmRecurring(recurringId, parsed, meta) {
   appendRow(SHEETS.TRANSACTIONS.name, {
     id: txId,
     date: parsed.date,
-    type: 'expense',
+    type: definition ? recurringType(definition) : 'expense',
     kind: 'fixed',
     category: definition ? String(definition.category || '') : '',
     envelope: '',
@@ -273,7 +273,7 @@ function confirmRecurring(recurringId, parsed, meta) {
   return {
     txId: txId,
     mode: 'confirm',
-    type: 'expense',
+    type: definition ? recurringType(definition) : 'expense',
     kind: 'fixed',
     category: definition ? String(definition.category || '') : '',
     envelope: '',

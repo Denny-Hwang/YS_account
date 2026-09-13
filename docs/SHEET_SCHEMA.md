@@ -43,8 +43,13 @@
 | tolerance_pct | 예상 대비 허용 편차 % (월 마감 보고 기준) |
 | active | `Y` \| `N` |
 | notes | 메모 |
+| type | `income` \| `expense`. 비어 있으면 expense. 수입원(급여, 레슨 예상치)도 이 탭에 둔다 |
 
-헤더 순서: `id, name, kind, category, expected_amount, currency, due_day, amount_rule, tolerance_pct, active, notes`
+헤더 순서: `id, name, kind, category, expected_amount, currency, due_day, amount_rule, tolerance_pct, active, notes, type`
+
+`type` 은 나중에 추가된 열이라 `Recurring` 탭도 헤더 확장을 허용한다. 기존 시트에 없으면 `setupSheet()` 이 붙인다.
+`kind=variable` 행(예: 레슨 수입 예상치)은 월별 예약 행을 만들지 않고 계획값으로만 쓴다.
+수입원 id 는 `I01` 형식을 권한다.
 
 ## Budgets (월별 봉투 예산)
 

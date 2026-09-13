@@ -13,8 +13,12 @@
 ```
 
 <p>
-  <img src="docs/images/webapp-today.png" alt="오늘 화면" width="300">
-  <img src="docs/images/webapp-report.png" alt="리포트 화면" width="300">
+  <img src="docs/images/webapp-today.png" alt="오늘 화면" width="220">
+  <img src="docs/images/webapp-income.png" alt="수입 화면" width="220">
+  <img src="docs/images/webapp-debts.png" alt="부채 화면" width="220">
+</p>
+<p>
+  <img src="docs/images/webapp-report.png" alt="리포트 화면" width="220">
 </p>
 
 ## 무엇을 하는가
@@ -24,7 +28,7 @@
 - **롤링 일일 가용액.** `(예산 − 오늘 이전 지출) ÷ 남은 일수`. 어제 아꼈으면 오늘 늘어난다.
 - **고정비 자동 기장.** 매월 렌트·관리비·구독료가 예정 상태로 잡히고, 실제 금액을 보내면 확정된다.
 - **아침 요약과 월 마감.** 사람이 아무것도 하지 않아도 매일 아침과 말일에 메시지가 온다.
-- **웹앱.** 오늘·원장·예산·리포트와 고정비·부채·자산·목표. 시트를 직접 읽고 쓴다. 서버가 없다.
+- **웹앱.** 오늘·원장·예산·수입·리포트와 고정비·부채·자산·목표. 예산 대비 집행은 불릿 막대로, 추이는 12개월 그래프로 본다. 시트를 직접 읽고 쓴다. 서버가 없다.
 
 ## 구성
 
@@ -101,5 +105,5 @@ claude/prompts/     단계별 프롬프트 사본
 
 ## 진행 상태
 
-P0 부터 P9 까지 끝났다. 단계별 내용은 [docs/STATUS.md](docs/STATUS.md) 참고.
+P0 부터 P10 까지 끝났다. 단계별 내용은 [docs/STATUS.md](docs/STATUS.md) 참고.
 아직 정하지 못한 것은 [ADR-0003](docs/decisions/ADR-0003-open-decisions.md) 에 모아 두었다.

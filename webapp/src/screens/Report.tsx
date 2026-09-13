@@ -1,192 +1,143 @@
 import { useMemo, useState } from 'react'
 import { formatUsd } from '@shared/Budget.js'
+import { DivergingBars, LineChart, MonthlyBars, RankBars, SmallMultiples, StackedBars, Stat } from '../components/Charts'
 import { Card, Empty } from '../components/Ui'
-import { latestAssetsTotal, type Workbook } from '../lib/ledger'
-
-interface MonthTotals {
-  month: string
-  income: number
-  expense: number
-  net: number
-}
-
-function lastMonths(fromMonth: string, count: number): string[] {
-  const [y, m] = fromMonth.split('-').map(Number)
-  const out: string[] = []
-  for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(Date.UTC(y, m - 1 - i, 1))
-    out.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`)
-  }
-  return out
-}
+import { configList, latestAssetsTotal, monthsBack, type Workbook } from '../lib/ledger'
+import { averageNet, categoryBreakdown, cumulativePace, envelopeMonthly, envelopeSummary, monthlyTotals, topMerchants } from '../lib/metrics'
 
 export function Report({ workbook, today }: { workbook: Workbook; today: string }) {
   const thisMonth = today.slice(0, 7)
   const [selected, setSelected] = useState(thisMonth)
   const [asTable, setAsTable] = useState(false)
 
-  const months = useMemo(() => lastMonths(thisMonth, 12), [thisMonth])
-
-  const totals: MonthTotals[] = useMemo(() => {
-    const byMonth = new Map<string, MonthTotals>()
-    months.forEach((month) => byMonth.set(month, { month, income: 0, expense: 0, net: 0 }))
-    workbook.transactions.forEach((row) => {
-      if (String(row.status) === 'deleted') return
-      const bucket = byMonth.get(String(row.date).slice(0, 7))
-      if (!bucket) return
-      const usd = Number(row.amount_usd) || 0
-      if (String(row.type) === 'income') bucket.income += usd
-      else if (String(row.type) === 'expense') bucket.expense += usd
-    })
-    return months.map((month) => {
-      const b = byMonth.get(month)!
-      return {
-        month,
-        income: Math.round(b.income * 100) / 100,
-        expense: Math.round(b.expense * 100) / 100,
-        net: Math.round((b.income - b.expense) * 100) / 100,
-      }
-    })
-  }, [workbook, months])
-
-  const peak = Math.max(1, ...totals.map((t) => Math.max(t.income, t.expense)))
+  const months = useMemo(() => monthsBack(thisMonth, 12), [thisMonth])
+  const totals = useMemo(() => monthlyTotals(workbook, months), [workbook, months])
   const current = totals.find((t) => t.month === selected) ?? totals[totals.length - 1]
+  const avgNet = averageNet(totals)
+  const savingRate = current.income > 0 ? Math.round((current.net / current.income) * 100) : null
+  const twelve = totals.reduce((a, t) => ({ income: a.income + t.income, expense: a.expense + t.expense }), { income: 0, expense: 0 })
 
-  const categories = useMemo(() => {
-    const sums = new Map<string, number>()
-    workbook.transactions.forEach((row) => {
-      if (String(row.status) === 'deleted') return
-      if (String(row.type) !== 'expense') return
-      if (String(row.date).slice(0, 7) !== selected) return
-      const key = String(row.category).trim() || '(분류 없음)'
-      sums.set(key, (sums.get(key) ?? 0) + (Number(row.amount_usd) || 0))
-    })
-    const list = Array.from(sums.entries())
-      .map(([name, amount]) => ({ name, amount: Math.round(amount * 100) / 100 }))
-      .sort((a, b) => b.amount - a.amount)
-    const total = list.reduce((acc, c) => acc + c.amount, 0)
-    return { list, total }
-  }, [workbook, selected])
+  const pace = useMemo(() => cumulativePace(workbook, selected, today), [workbook, selected, today])
+  const paceToday = pace.actual.filter((v): v is number => v !== null).slice(-1)[0] ?? 0
+  const planToday = pace.plan[Math.max(0, Math.min(pace.todayDay, pace.days) - 1)] ?? 0
 
+  const envelopes = configList(workbook.config, 'envelopes')
+  const sixMonths = useMemo(() => monthsBack(selected, 6), [selected])
+  const multiples = envelopes.map((env) => ({
+    title: env,
+    values: envelopeMonthly(workbook, sixMonths, env),
+    target: envelopeSummary(workbook, selected).find((s) => s.envelope === env)?.budget,
+  }))
+
+  const categories = useMemo(() => categoryBreakdown(workbook, selected), [workbook, selected])
+  const merchants = useMemo(() => topMerchants(workbook, selected, 8), [workbook, selected])
   const assets = latestAssetsTotal(workbook)
-  const twelveMonth = totals.reduce(
-    (acc, t) => ({ income: acc.income + t.income, expense: acc.expense + t.expense }),
-    { income: 0, expense: 0 }
-  )
 
   return (
     <div className="viz">
-      <Card title={`${selected} 순저축`}>
-        <p className={`hero${current.net < 0 ? ' negative' : ''}`}>{formatUsd(current.net)}</p>
-        <p className="meta">
-          수입 {formatUsd(current.income)} · 지출 {formatUsd(current.expense)}
-        </p>
+      <Card>
+        <div className="row" style={{ marginBottom: 12 }}>
+          <span className="meta">{selected} 기준 · 아래 막대를 누르면 달이 바뀝니다</span>
+          <button className="ghost" onClick={() => setAsTable((v) => !v)}>{asTable ? '그래프로' : '표로'}</button>
+        </div>
+        <div className="stat-row">
+          <Stat label="이달 순저축" value={formatUsd(current.net)} tone={current.net < 0 ? 'bad' : 'good'} sub={savingRate !== null ? `저축률 ${savingRate}%` : '수입 기록 없음'} />
+          <Stat label="12개월 월평균 순저축" value={formatUsd(avgNet)} size="md" tone={avgNet < 0 ? 'bad' : undefined} />
+          <Stat label="이달 수입 / 지출" value={`${formatUsd(current.income)} / ${formatUsd(current.expense)}`} size="md" />
+        </div>
       </Card>
 
-      <Card
-        title="최근 12개월"
-        action={
-          <button className="ghost" onClick={() => setAsTable((v) => !v)}>
-            {asTable ? '그래프로' : '표로'}
-          </button>
-        }
-      >
-        <div className="legend">
-          <span>
-            <i className="swatch" style={{ background: 'var(--series-income)' }} />
-            수입
-          </span>
-          <span>
-            <i className="swatch" style={{ background: 'var(--series-expense)' }} />
-            지출
-          </span>
-          <span style={{ marginLeft: 'auto' }}>막대를 누르면 그 달을 봅니다</span>
-        </div>
-
-        {asTable ? (
+      {asTable ? (
+        <Card title="최근 12개월">
           <div className="scroll-x">
             <table className="data">
               <thead>
-                <tr>
-                  <th>월</th>
-                  <th>수입</th>
-                  <th>지출</th>
-                  <th>순저축</th>
-                </tr>
+                <tr><th>월</th><th>수입</th><th>지출</th><th>고정</th><th>유동</th><th>순저축</th></tr>
               </thead>
               <tbody>
                 {totals.map((t) => (
-                  <tr key={t.month}>
-                    <td>{t.month}</td>
-                    <td>{formatUsd(t.income)}</td>
-                    <td>{formatUsd(t.expense)}</td>
-                    <td>{formatUsd(t.net)}</td>
+                  <tr key={t.month} onClick={() => setSelected(t.month)} style={{ cursor: 'pointer', fontWeight: t.month === selected ? 600 : 400 }}>
+                    <td>{t.month}</td><td>{formatUsd(t.income)}</td><td>{formatUsd(t.expense)}</td><td>{formatUsd(t.fixed)}</td><td>{formatUsd(t.variable)}</td><td>{formatUsd(t.net)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </Card>
+      ) : (
+        <>
+          <Card title="수입과 지출">
+            <MonthlyBars months={months} selected={selected} onSelect={setSelected}
+              series={[{ label: '수입', values: totals.map((t) => t.income), tone: 'income' }, { label: '지출', values: totals.map((t) => t.expense), tone: 'expense' }]} />
+            <div className="row" style={{ marginTop: 10 }}>
+              <span className="meta">12개월 합계</span>
+              <span className="meta">수입 {formatUsd(twelve.income)} · 지출 {formatUsd(twelve.expense)}</span>
+            </div>
+          </Card>
+
+          <Card title="순저축 추이">
+            <DivergingBars months={months} values={totals.map((t) => t.net)} selected={selected} onSelect={setSelected} />
+            <p className="meta" style={{ marginTop: 8 }}>수입에서 지출을 뺀 값입니다. 위로 솟으면 남긴 달, 아래로 내려가면 모자란 달입니다.</p>
+          </Card>
+
+          <Card title="고정비와 유동비">
+            <StackedBars months={months} selected={selected} onSelect={setSelected}
+              series={[{ label: '고정비', values: totals.map((t) => t.fixed), tone: 'plan' }, { label: '유동비', values: totals.map((t) => t.variable), tone: 'expense' }]} />
+            <p className="meta" style={{ marginTop: 8 }}>
+              {selected} 고정비 {formatUsd(current.fixed)} · 유동비 {formatUsd(current.variable)}
+              {current.expense > 0 && ` · 유동비 비중 ${Math.round((current.variable / current.expense) * 100)}%`}
+            </p>
+          </Card>
+        </>
+      )}
+
+      <Card title={`${selected} 유동비 누적`}>
+        {pace.budget === 0 ? (
+          <Empty>이 달의 예산이 없습니다. 예산 탭에서 봉투 금액을 넣으세요.</Empty>
         ) : (
           <>
-            <div className="bars">
-              {totals.map((t) => (
-                <button
-                  key={t.month}
-                  className={`col${t.month === selected ? ' selected' : ''}`}
-                  onClick={() => setSelected(t.month)}
-                  aria-label={`${t.month} 수입 ${formatUsd(t.income)}, 지출 ${formatUsd(t.expense)}`}
-                  title={`${t.month}\n수입 ${formatUsd(t.income)}\n지출 ${formatUsd(t.expense)}`}
-                >
-                  <i className="income" style={{ height: `${(t.income / peak) * 100}%` }} />
-                  <i className="expense" style={{ height: `${(t.expense / peak) * 100}%` }} />
-                </button>
-              ))}
-            </div>
-            <div className="bars-axis">
-              {totals.map((t) => (
-                <span key={t.month}>{t.month.slice(5)}</span>
-              ))}
-            </div>
+            <LineChart
+              series={[
+                { label: '실제 누적', points: pace.actual, tone: 'expense' },
+                { label: '계획선', points: pace.plan, tone: 'plan', dashed: true },
+              ]}
+              xLabels={pace.labels}
+            />
+            <p className="meta" style={{ marginTop: 6 }}>
+              {selected === thisMonth ? `오늘까지 ` : '이 달 '}실제 {formatUsd(paceToday)} · 계획 {formatUsd(planToday)} ·{' '}
+              {paceToday <= planToday ? `계획보다 ${formatUsd(planToday - paceToday)} 덜 씀` : `계획보다 ${formatUsd(paceToday - planToday)} 더 씀`}
+              {' '}· 월 예산 {formatUsd(pace.budget)}
+            </p>
           </>
         )}
-
-        <div className="row" style={{ marginTop: 14 }}>
-          <span className="meta">12개월 합계</span>
-          <span className="meta">
-            수입 {formatUsd(twelveMonth.income)} · 지출 {formatUsd(twelveMonth.expense)}
-          </span>
-        </div>
       </Card>
+
+      {multiples.length > 0 && (
+        <Card title="봉투별 6개월 추이">
+          <SmallMultiples items={multiples} months={sixMonths} />
+        </Card>
+      )}
 
       <Card title={`${selected} 카테고리`}>
-        {categories.list.length === 0 ? (
+        {categories.length === 0 ? (
           <Empty>이 달의 지출 기록이 없습니다.</Empty>
         ) : (
-          <div className="rank">
-            {categories.list.map((c) => {
-              const share = categories.total > 0 ? c.amount / categories.total : 0
-              return (
-                <div className="item" key={c.name}>
-                  <div className="row">
-                    <span className="ellipsis">{c.name}</span>
-                    <span className="meta">
-                      {formatUsd(c.amount)} · {(share * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="track">
-                    <span style={{ width: `${Math.max(share * 100, 1)}%` }} />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          <>
+            <RankBars items={categories.map((c) => ({ name: c.name, value: c.value, delta: c.delta }))} />
+            <p className="meta" style={{ marginTop: 8 }}>▲▼ 는 전월 대비 증감입니다.</p>
+          </>
         )}
       </Card>
+
+      {merchants.length > 0 && (
+        <Card title={`${selected} 많이 쓴 곳`}>
+          <RankBars items={merchants.map((m) => ({ name: m.name, value: m.value, hint: `${m.count}회` }))} />
+        </Card>
+      )}
 
       {assets.date && (
         <Card title="자산">
-          <p className="hero">{formatUsd(assets.total)}</p>
-          <p className="meta">{assets.date} 스냅샷 기준</p>
+          <Stat label={`${assets.date} 스냅샷`} value={formatUsd(assets.total)} size="md" sub={avgNet > 0 ? `지금 순저축 속도면 1년 뒤 약 ${formatUsd(assets.total + avgNet * 12)}` : undefined} />
         </Card>
       )}
     </div>

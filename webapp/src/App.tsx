@@ -6,6 +6,7 @@ import { isConfigured, loadSettings, saveSettings, type Settings } from './lib/s
 import type { SheetsContext } from './lib/sheets'
 import { Budgets } from './screens/Budgets'
 import { Assets, Debts, Goals } from './screens/Holdings'
+import { Income } from './screens/Income'
 import { LedgerScreen } from './screens/LedgerScreen'
 import { RecurringScreen } from './screens/RecurringScreen'
 import { Report } from './screens/Report'
@@ -16,6 +17,7 @@ type Screen =
   | 'today'
   | 'ledger'
   | 'budgets'
+  | 'income'
   | 'report'
   | 'more'
   | 'recurring'
@@ -28,6 +30,7 @@ const TITLES: Record<Screen, string> = {
   today: '오늘',
   ledger: '원장',
   budgets: '예산',
+  income: '수입',
   report: '리포트',
   more: '더보기',
   recurring: '고정비',
@@ -41,6 +44,7 @@ const TABS: Array<{ id: Screen; label: string }> = [
   { id: 'today', label: '오늘' },
   { id: 'ledger', label: '원장' },
   { id: 'budgets', label: '예산' },
+  { id: 'income', label: '수입' },
   { id: 'report', label: '리포트' },
   { id: 'more', label: '더보기' },
 ]
@@ -196,15 +200,18 @@ export function App() {
       {ready && screen === 'budgets' && (
         <Budgets workbook={workbook} ctx={ctx} today={today} onChanged={reload} />
       )}
+      {ready && screen === 'income' && (
+        <Income workbook={workbook} ctx={ctx} today={today} onChanged={reload} />
+      )}
       {ready && screen === 'report' && <Report workbook={workbook} today={today} />}
       {ready && screen === 'recurring' && (
         <RecurringScreen workbook={workbook} ctx={ctx} today={today} onChanged={reload} />
       )}
-      {ready && screen === 'debts' && <Debts workbook={workbook} ctx={ctx} onChanged={reload} />}
+      {ready && screen === 'debts' && <Debts workbook={workbook} ctx={ctx} today={today} onChanged={reload} />}
       {ready && screen === 'assets' && (
         <Assets workbook={workbook} ctx={ctx} today={today} onChanged={reload} />
       )}
-      {ready && screen === 'goals' && <Goals workbook={workbook} ctx={ctx} onChanged={reload} />}
+      {ready && screen === 'goals' && <Goals workbook={workbook} ctx={ctx} today={today} onChanged={reload} />}
 
       <nav className="tabbar">
         {TABS.map((item) => (
