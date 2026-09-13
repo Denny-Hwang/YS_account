@@ -324,3 +324,25 @@ test('2주급 급여: 3번 받는 달은 예상이 1.5배, 받을 때마다 행�
   assert.equal(sep.reduce((a, r) => a + Number(r.amount_usd), 0), 5200);
   assert.match(lastText(ctx), /이번 달 2번째/);
 });
+
+test('지난달 지출을 뒤늦게 기록하면 그 달 기준으로 결산해 회신한다', () => {
+  const ctx = fresh();
+  msg(ctx, '2026-08-28 코스트코 190.05');
+  const row = rowsOf(ctx, 'Transactions').find((r) => r.date === '2026-08-28');
+  assert.equal(row.envelope, '식료품');
+  assert.equal(row.amount, 190.05);
+  const text = lastText(ctx);
+  assert.match(text, /✓ 2026-08 식료품 \$190\.05 기록/);
+  assert.match(text, /2026-08 실행 \$190\.05 \/ 예산 \$1,000\.00 · 잔액 \$809\.95/);
+  assert.ok(!/오늘 남은/.test(text), '지난달 기록에 "오늘 남은" 은 뜻이 없다');
+  // 이번 달 봉투 상태는 지난달 기록에 영향받지 않는다
+  msg(ctx, '코스트코 10');
+  assert.match(lastText(ctx), /^🟢 식료품 오늘 남은/);
+});
+
+test('이번 달 지난 날짜는 평소대로 오늘 기준 한 줄로 회신한다', () => {
+  const ctx = fresh();
+  msg(ctx, '9/6 코스트코 85.89');
+  assert.equal(rowsOf(ctx, 'Transactions').find((r) => r.merchant === '코스트코').date, '2026-09-06');
+  assert.match(lastText(ctx), /^🟢 식료품 오늘 남은 \$/);
+});
