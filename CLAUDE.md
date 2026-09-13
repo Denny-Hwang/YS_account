@@ -18,6 +18,8 @@ Telegram 봇으로 최소 입력 → Google Apps Script 가 파싱·분류해 Go
 6. 한 단계(P n)의 종료 조건에 도달하면 멈추고 STATUS.md 를 갱신한 뒤 사용자에게 보고한다.
    다음 단계로 자동 진행하지 않는다.
 7. 탐색성 작업("분석해봐", "둘러봐")은 하지 않는다. 지시된 파일만 읽고 쓴다.
+8. Apps Script 편집기에서 실행할 함수를 안내할 때는 어느 스크립트 파일에 있는지 항상 함께 적는다.
+   예: "`Setup.gs` 의 `runSetupAll` 을 실행한다". 전체 목록은 `docs/SETUP.md` 부록에 있다.
 
 ## 저장소 구조
 - `apps-script/src/*.js` — GAS 코드 (clasp 로 push). 순수 모듈은 `module.exports` 가드 포함.
