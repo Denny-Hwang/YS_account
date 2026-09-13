@@ -72,7 +72,7 @@ Apps Script 의 Script Properties, gitignore 된 `PersonalSeed.js`, 브라우저
 
 ```bash
 # Apps Script 순수 모듈 (파서 · 분류 · 예산 · 원장 규칙 · 이관 · 대조)
-cd apps-script && npm test          # 89개 (순수 모듈 + GAS 스모크)
+cd apps-script && npm test          # 94개 (순수 모듈 + GAS 스모크)
 node --check src/*.js               # GAS 전용 파일은 문법만 확인
 
 # 웹앱

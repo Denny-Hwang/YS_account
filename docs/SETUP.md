@@ -452,6 +452,10 @@ OCR 언어는 Config 에 `ocr_language` 키를 넣어 바꿀 수 있다(기본 `
 - `Config.overspend_envelope`: 전월 초과분을 흡수할 봉투. 기본 `예비비`. 이 봉투의 `Budgets.carryover` 는 `carry` 가 자연스럽다.
 - 연간비 봉투를 쓰려면 `Config.envelopes` 에 `연간비` 를 더하고 `Budgets` 에 매달 적립액을 `carry` 로 넣는다.
 - 저축: `Recurring` 에 `type=transfer` 항목을 두면(시드 `S01`) 매달 예정 행이 생기고 `저축 300` 으로 확정한다.
+- **2주급 급여**: `Recurring` 의 급여 행 `amount_rule` 을 `biweekly:<1회 금액>@<기준 급여일>` 로 적는다.
+  예: `biweekly:2600@2026-01-02`. 기준 급여일은 실제로 받은 날 아무거나 하나면 된다.
+  그 달 급여일이 2번이면 예상 5,200, 3번인 달은 7,800 으로 저절로 바뀐다. 손으로 고칠 일이 없다.
+  받을 때마다 `급여 2600` 을 보내면 된다. 웹앱 수입 탭에 그 달 급여일이 며칠인지 표시된다.
 - 부채 상각: `Debts.recurring_id` 에 상환 고정비 id 를 적으면 확정할 때 원금·남은 회차가 줄어든다.
 - 비상금: `Config.emergency_fund_months`(기본 3). 목표 화면과 Today 에 자동으로 보인다.
 

@@ -296,3 +296,31 @@ test('허용되지 않은 발신자와 틀린 token 은 아무것도 하지 않�
   ctx.doPost({ parameter: { token: 'wrong' }, postData: { contents: JSON.stringify({ update_id: 1, message: { chat: { id: 1 }, from: { id: 11 }, text: '코스트코 10' } }) } });
   assert.equal(rowsOf(ctx, 'Transactions').length, before);
 });
+
+test('2주급 급여: 3번 받는 달은 예상이 1.5배, 받을 때마다 행이 쌓인다', () => {
+  const ctx = fresh();
+  // 시드의 급여를 2주급 규칙으로 바꾼다. 1회 2600, 기준 급여일 2026-01-02.
+  ctx.updateRowById('Recurring', 'I01', { amount_rule: 'biweekly:2600@2026-01-02', expected_amount: 5200 });
+  ctx.invalidateReadCache();
+  const salary = ctx.readAll('Recurring').find((r) => r.id === 'I01');
+
+  // 2026-09 는 11일과 25일 두 번, 2026-07 은 세 번이다.
+  assert.equal(ctx.recurringExpectedAmount(salary, '2026-09'), 5200);
+  assert.equal(ctx.recurringExpectedAmount(salary, '2026-07'), 7800);
+
+  // 예정 행은 그 달 첫 급여일에 만들어진다.
+  ctx.postMonthlyRecurring('2026-10');
+  const oct = ctx.readAll('Transactions').filter((r) => r.recurring_id === 'I01' && String(r.date).slice(0, 7) === '2026-10');
+  assert.equal(oct.length, 1);
+  assert.equal(oct[0].date, '2026-10-09');
+  assert.equal(oct[0].amount, 5200);
+
+  // 이번 달(2026-09) 급여를 두 번 받으면 두 행이 남는다. 첫 건이 덮어써지지 않는다.
+  msg(ctx, '급여 2600');
+  msg(ctx, '급여 2600');
+  const sep = ctx.readAll('Transactions').filter((r) => r.recurring_id === 'I01' && String(r.date).slice(0, 7) === '2026-09');
+  assert.equal(sep.length, 2);
+  assert.equal(sep.filter((r) => String(r.status) === 'confirmed').length, 2);
+  assert.equal(sep.reduce((a, r) => a + Number(r.amount_usd), 0), 5200);
+  assert.match(lastText(ctx), /이번 달 2번째/);
+});

@@ -84,3 +84,17 @@ test('Budget.js 의 allowanceLeftToday 는 오늘 쓴 만큼 줄어든다', asyn
   assert.equal(status.allowanceLeftToday, 18.33)
   assert.equal(status.signal, 'green')
 })
+
+test('LedgerRules.js 의 2주급 규칙을 웹앱에서도 같은 값으로 읽는다', async () => {
+  const rules = await loadShared('LedgerRules.js')
+  assert.deepEqual(rules.parseAmountRule('biweekly:2600@2026-01-02'), {
+    type: 'biweekly',
+    perCheck: 2600,
+    anchor: '2026-01-02',
+  })
+  assert.equal(rules.biweeklyPaydays('2026-01', '2026-01-02').length, 3)
+  assert.equal(rules.biweeklyPaydays('2026-02', '2026-01-02').length, 2)
+  const salary = { expected_amount: 5200, amount_rule: 'biweekly:2600@2026-01-02' }
+  assert.equal(rules.expectedAmountFor(salary, '2026-01', 0), 7800)
+  assert.equal(rules.expectedAmountFor(salary, '2026-02', 0), 5200)
+})

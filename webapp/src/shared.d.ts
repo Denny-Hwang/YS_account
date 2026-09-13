@@ -79,6 +79,19 @@ declare module '@shared/Classifier.js' {
 }
 
 declare module '@shared/LedgerRules.js' {
+  export interface AmountRule {
+    type: 'fixed' | 'income_pct' | 'biweekly'
+    pct?: number
+    perCheck?: number
+    anchor?: string
+  }
+  export function parseAmountRule(rule: string): AmountRule
+  export function biweeklyPaydays(month: string, anchor: string): string[]
+  export function expectedAmountFor(
+    definition: Record<string, unknown>,
+    month: string,
+    monthIncome: number
+  ): number
   export function pickConfirmTarget<T extends Record<string, unknown>>(
     monthRows: T[],
     recurringId: string

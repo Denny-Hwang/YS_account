@@ -130,15 +130,28 @@ function dailySummary() {
 
   var day = Number(today.slice(8, 10));
   activeRecurring().forEach(function (definition) {
-    if (Number(definition.due_day) !== day || String(definition.kind || 'fixed').trim() !== 'fixed') {
+    if (String(definition.kind || 'fixed').trim() !== 'fixed') {
       return;
     }
+    // 2주급은 due_day 가 아니라 그 달 급여일 중 오늘이 있는지로 판정한다.
+    var rule = parseAmountRule(definition.amount_rule);
+    var perOccurrence;
+    if (rule.type === 'biweekly') {
+      if (biweeklyPaydays(month, rule.anchor).indexOf(today) < 0) {
+        return;
+      }
+      perOccurrence = rule.perCheck;
+    } else {
+      if (Number(definition.due_day) !== day) {
+        return;
+      }
+      perOccurrence = recurringExpectedAmount(definition, month);
+    }
     var name = String(definition.name || definition.id);
-    var amount = recurringExpectedAmount(definition, month);
     var type = recurringType(definition);
     var verb = type === 'income' ? '들어오면' : (type === 'transfer' ? '옮겼으면' : '실제 금액 다르면');
-    lines.push('오늘 ' + name + ' 예정 ' + formatUsd(toUsd(amount, definition.currency)) +
-      " — " + verb + " '" + name + ' ' + Math.round(amount) + "' 로 보내주세요");
+    lines.push('오늘 ' + name + ' 예정 ' + formatUsd(toUsd(perOccurrence, definition.currency)) +
+      " — " + verb + " '" + name + ' ' + Math.round(perOccurrence) + "' 로 보내주세요");
   });
 
   var overdue = unconfirmedRecurring(month).filter(function (item) { return item.date < today; });
