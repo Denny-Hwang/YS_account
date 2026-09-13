@@ -30,7 +30,7 @@ jobs:
 
       - name: 비밀값 유출 점검
         run: |
-          hits=$(git grep -nE "[0-9]{9,10}:[A-Za-z0-9_-]{35}|AKfycb|1[A-Za-z0-9_-]{40,}" \
+          hits=$(git grep -nE "[0-9]{9,10}:[A-Za-z0-9_-]{35}|AKfycb|GOCSPX-|1[A-Za-z0-9_-]{40,}" \
             -- ':!*package-lock.json' ':!CLAUDE.md' ':!docs/SETUP.md' ':!claude/prompts/*' ':!.github/workflows/ci.yml' || true)
           if [ -n "$hits" ]; then echo "$hits"; echo "비밀값으로 보이는 문자열이 있습니다."; exit 1; fi
 

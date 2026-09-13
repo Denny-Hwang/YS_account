@@ -10,3 +10,10 @@ dist/
 *.tsbuildinfo
 apps-script/src/PersonalSeed.js
 apps-script/src/Personal*.js
+
+# 구글 콘솔에서 내려받은 OAuth 클라이언트 파일. client_secret 이 들어 있다.
+# 이 프로젝트는 클라이언트 ID(공개값)만 쓰므로 이 파일 자체가 필요 없다.
+client_secret*.json
+*client_secret*
+credentials.json
+token.json
