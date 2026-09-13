@@ -17,6 +17,7 @@ export function RecurringScreen({ workbook, ctx, today, onChanged }: { workbook:
   const [error, setError] = useState<string | null>(null)
 
   const items = recurringActuals(workbook, month, 'expense')
+  const savings = recurringActuals(workbook, month, 'transfer').filter((i) => String(i.row.active).trim().toUpperCase() === 'Y')
   const active = items.filter((i) => String(i.row.active).trim().toUpperCase() === 'Y')
   const expectedTotal = active.reduce((a, i) => a + i.expectedUsd, 0)
   const confirmedTotal = active.reduce((a, i) => a + i.actualUsd, 0)
@@ -115,6 +116,26 @@ export function RecurringScreen({ workbook, ctx, today, onChanged }: { workbook:
           })
         )}
       </Card>
+
+      {savings.length > 0 && (
+        <Card title="저축 (먼저 저축)">
+          {savings.map((i) => (
+            <Bullet
+              key={i.id}
+              label={
+                <>
+                  {i.name} <span className="pill">{i.status ? STATUS_LABEL[i.status] ?? i.status : '미기장'}</span>
+                </>
+              }
+              value={i.actualUsd}
+              target={i.expectedUsd}
+              tone="income"
+              hint={`${String(i.row.due_day)}일 · 옮긴 뒤 봇에 "${i.name} 금액" 을 보내면 확정됩니다`}
+            />
+          ))}
+          <p className="meta" style={{ marginTop: 8 }}>수입에서 먼저 떼어 두는 돈입니다. 리포트의 순저축과는 별개로, 계획한 만큼 실제로 옮겼는지를 봅니다.</p>
+        </Card>
+      )}
 
       {categoryRank.length > 0 && (
         <Card title="고정비 구성">

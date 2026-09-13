@@ -100,16 +100,24 @@ export function columnLetter(index: number): string {
   return s
 }
 
-/** 한 행을 통째로 덮어쓴다. 행을 지우지 않는다(soft delete 만 쓴다). */
-export async function updateRow(
+/**
+ * 한 행의 특정 셀들만 쓴다. 행 전체를 덮어쓰지 않으므로
+ * 그 사이 다른 사람이 고친 다른 열을 되돌리지 않는다(lost update 방지).
+ * 행을 지우지 않는다(soft delete 만 쓴다).
+ */
+export async function updateCells(
   ctx: SheetsContext,
   name: string,
   rowNumber: number,
-  values: (string | number)[]
+  cells: Array<{ col: number; value: string | number }>
 ): Promise<void> {
-  const range = `'${name}'!A${rowNumber}:${columnLetter(values.length - 1)}${rowNumber}`
-  await request(ctx, `/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
-    method: 'PUT',
-    body: JSON.stringify({ values: [values] }),
+  if (cells.length === 0) return
+  const data = cells.map((c) => ({
+    range: `'${name}'!${columnLetter(c.col)}${rowNumber}`,
+    values: [[c.value]],
+  }))
+  await request(ctx, `/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({ valueInputOption: 'RAW', data }),
   })
 }

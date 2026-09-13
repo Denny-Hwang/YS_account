@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { envelopeStatus, formatUsd } from '@shared/Budget.js'
+import { daysInMonth, envelopeStatus, formatUsd, signalGlyph } from '@shared/Budget.js'
 import { Bullet, Stat } from '../components/Charts'
 import { Card, Empty, Notice } from '../components/Ui'
 import { TABS, appendTo, availableMonths, budgetAmount, configList, monthTransactions, patchIn, type SheetRow, type Workbook } from '../lib/ledger'
@@ -15,7 +15,9 @@ export function Budgets({ workbook, ctx, today, onChanged }: { workbook: Workboo
 
   const envelopes = configList(workbook.config, 'envelopes')
   const transactions = useMemo(() => monthTransactions(workbook, month), [workbook, month])
-  const asOf = month === today.slice(0, 7) ? today : `${month}-28`
+  // 지난 달은 말일 기준(계획 진도 100%), 다음 달은 1일 기준으로 본다.
+  const thisMonth = today.slice(0, 7)
+  const asOf = month === thisMonth ? today : month < thisMonth ? `${month}-${daysInMonth(month)}` : `${month}-01`
 
   const findBudgetRow = (envelope: string): SheetRow | undefined =>
     workbook.budgets.find((row) => String(row.month).trim() === month && String(row.envelope).trim() === envelope)
@@ -75,13 +77,13 @@ export function Budgets({ workbook, ctx, today, onChanged }: { workbook: Workboo
                 <Bullet
                   label={
                     <>
-                      {envelope} <span className="pill">{carryover === 'carry' ? '이월' : '초기화'}</span>
+                      {signalGlyph(status.signal)} {envelope} <span className="pill">{carryover === 'carry' ? '이월' : '초기화'}</span>
                     </>
                   }
                   value={status.spentTotal}
                   target={budget}
                   pace={status.plannedPaceToDate}
-                  hint={`잔액 ${formatUsd(status.remaining)} · 남은 ${status.remainingDays}일 · ${formatUsd(status.allowanceToday)}/일`}
+                  hint={`잔액 ${formatUsd(status.remaining)} · 남은 ${status.remainingDays}일 · 하루치 ${formatUsd(status.allowanceToday)}`}
                   onClick={() => setEditing(open ? null : envelope)}
                 />
                 {open && (
@@ -106,7 +108,10 @@ export function Budgets({ workbook, ctx, today, onChanged }: { workbook: Workboo
             )
           })
         )}
-        <p className="meta" style={{ marginTop: 10 }}>봉투를 누르면 예산을 고칠 수 있습니다. 이월로 두면 다음 달 시작 때 남은 금액이 더해집니다.</p>
+        <p className="meta" style={{ marginTop: 10 }}>
+          봉투를 누르면 예산을 고칠 수 있습니다. 이월로 두면 다음 달 시작 때 남은 금액(양수만)이 더해집니다. 연간비처럼 매달 조금씩 모으는 봉투는 이월로 두세요.
+          어느 봉투든 초과한 만큼은 다음 달 {workbook.config.overspend_envelope || '예비비'} 예산에서 빠집니다.
+        </p>
       </Card>
     </div>
   )

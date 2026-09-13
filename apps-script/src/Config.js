@@ -38,14 +38,18 @@ var SHEETS = {
   },
   DEBTS: {
     name: 'Debts',
+    // extendable: recurring_id 는 나중에 추가된 열. 연결된 고정비가 확정되면 원금이 줄어든다.
+    extendable: true,
     headers: [
       'id', 'name', 'principal', 'rate_pct', 'monthly_payment',
-      'remaining_count', 'currency', 'notes'
+      'remaining_count', 'currency', 'notes', 'recurring_id'
     ]
   },
   ASSETS: {
     name: 'Assets',
-    headers: ['snapshot_date', 'account', 'balance', 'currency']
+    // extendable: fx_usd_krw 는 나중에 추가된 열. 스냅샷 당시 환율. 비어 있으면 Config 값을 쓴다.
+    extendable: true,
+    headers: ['snapshot_date', 'account', 'balance', 'currency', 'fx_usd_krw']
   },
   GOALS: {
     name: 'Goals',
@@ -81,7 +85,10 @@ var CONFIG_DEFAULTS = [
   ['timezone', 'America/Los_Angeles'],
   ['allowed_telegram_ids', ''],
   ['daily_summary_hour', '7'],
-  ['month_start_day', '1']
+  ['income_hints', '수입,급여,입금'],
+  ['overspend_envelope', '예비비'],
+  ['emergency_fund_months', '3'],
+  ['weekly_digest_day', '0']
 ];
 
 /** 열거형 값 목록. 데이터 유효성(드롭다운)과 검증에 함께 쓴다. */

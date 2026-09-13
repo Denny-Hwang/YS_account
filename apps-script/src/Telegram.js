@@ -131,13 +131,25 @@ function getWebhookInfo() {
   return res;
 }
 
-/** 봉투 선택 inline 키보드를 만든다. 한 줄에 두 개씩. */
-function buildChoiceKeyboard(pendingKey, choices) {
+/**
+ * 선택지 키보드. callback_data 는 라벨이 아니라 `prefix|key|index` 다.
+ * Telegram 의 callback_data 는 64바이트가 한도라 한글 라벨을 그대로 넣으면 넘칠 수 있다.
+ * @param {string} prefix 'cls' | 'amt'
+ * @param {(string|number)} key 대기 항목 키(Log 행 번호)
+ * @param {!Array<string>} labels 표준 순서의 라벨. index 는 이 배열 기준이다
+ * @param {Array<number>=} order 표시 순서(index 배열). 생략하면 labels 순서
+ * @param {number=} perRow 한 줄에 몇 개. 기본 2
+ * @return {!Object}
+ */
+function buildIndexKeyboard(prefix, key, labels, order, perRow) {
+  var seq = order && order.length ? order : labels.map(function (_l, i) { return i; });
+  var width = perRow || 2;
   var rows = [];
-  for (var i = 0; i < choices.length; i += 2) {
+  for (var i = 0; i < seq.length; i += width) {
     var row = [];
-    for (var j = i; j < Math.min(i + 2, choices.length); j++) {
-      row.push({ text: choices[j], callback_data: 'cls|' + pendingKey + '|' + choices[j] });
+    for (var j = i; j < Math.min(i + width, seq.length); j++) {
+      var idx = seq[j];
+      row.push({ text: labels[idx], callback_data: prefix + '|' + key + '|' + idx });
     }
     rows.push(row);
   }
@@ -147,4 +159,16 @@ function buildChoiceKeyboard(pendingKey, choices) {
 /** 삭제 버튼 하나짜리 키보드. */
 function buildDeleteKeyboard(txId) {
   return { inline_keyboard: [[{ text: '삭제', callback_data: 'del|' + txId }]] };
+}
+
+/**
+ * 봉투 간 예산 이동 버튼. `mv|fromIndex|toIndex|amount` (index 는 Config.envelopes 기준).
+ * @param {number} fromIdx
+ * @param {number} toIdx
+ * @param {number} amount USD 정수
+ * @param {string} label 버튼 글자
+ * @return {!Object}
+ */
+function buildMoveKeyboard(fromIdx, toIdx, amount, label) {
+  return { inline_keyboard: [[{ text: label, callback_data: 'mv|' + fromIdx + '|' + toIdx + '|' + amount }]] };
 }

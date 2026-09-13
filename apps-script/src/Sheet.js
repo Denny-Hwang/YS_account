@@ -66,6 +66,31 @@ function readAll(name) {
 }
 
 /**
+ * 한 실행 안에서 같은 탭을 여러 번 읽지 않도록 하는 캐시.
+ * 웹훅 한 번에 Transactions 를 서너 번 읽던 것을 한 번으로 줄인다.
+ * 쓰기 헬퍼(appendRow, updateRowById)가 해당 탭의 캐시를 비운다.
+ * 시트에 직접 setValue 를 하는 코드는 invalidateReadCache(name) 을 직접 불러야 한다.
+ */
+var READ_CACHE = {};
+
+/** 탭 전체를 읽되 이 실행 안에서는 한 번만 읽는다. 돌려주는 배열을 고치지 말 것. */
+function readAllCached(name) {
+  if (!READ_CACHE[name]) {
+    READ_CACHE[name] = readAll(name);
+  }
+  return READ_CACHE[name];
+}
+
+/** 탭 캐시를 비운다. 이름을 생략하면 전부 비운다. */
+function invalidateReadCache(name) {
+  if (name) {
+    delete READ_CACHE[name];
+  } else {
+    READ_CACHE = {};
+  }
+}
+
+/**
  * 객체를 헤더 순서로 정렬해 한 행 추가한다.
  * @param {string} name
  * @param {!Object} obj
@@ -81,6 +106,7 @@ function appendRow(name, obj) {
   sheet.appendRow(row);
   // 추가 직후 같은 실행 안에서 다시 읽는 경로가 있어 보류 중인 쓰기를 확정한다.
   SpreadsheetApp.flush();
+  invalidateReadCache(name);
   return sheet.getLastRow();
 }
 
@@ -142,6 +168,7 @@ function updateRowById(name, id, patch) {
     var v = merged[key];
     sheet.getRange(rowNum, idx + 1).setValue(v === null || v === undefined ? '' : v);
   });
+  invalidateReadCache(name);
   return rowNum;
 }
 

@@ -46,7 +46,7 @@ test('행 id 는 탭과 행 번호로 결정된다', () => {
 
 test('일반 지출 행을 옮긴다', () => {
   const r = buildTransactionFromRow(
-    { 날짜: '1/5', 내역: '코스트코', 금액: '85.89', 분류: '식료품', 봉투: '식료품', 메모: '', 구분: '', 결제자: '성주' },
+    { 날짜: '1/5', 내역: '코스트코', 금액: '85.89', 분류: '식료품', 봉투: '식료품', 메모: '', 구분: '', 결제자: '기록자' },
     MAP, CTX
   );
   assert.equal(r.status, 'ok');
@@ -54,7 +54,7 @@ test('일반 지출 행을 옮긴다', () => {
     id: 'mig_2025-01_7', date: '2025-01-05', type: 'expense', kind: 'variable',
     category: '식료품', envelope: '식료품', merchant: '코스트코', amount: 85.89,
     currency: 'USD', amount_usd: 85.89, recurring_id: '', status: 'active',
-    memo: '', payer: '성주', source: 'migration',
+    memo: '', payer: '기록자', source: 'migration',
     created_at: CTX.now, updated_at: CTX.now, updated_by: 'migration'
   });
 });

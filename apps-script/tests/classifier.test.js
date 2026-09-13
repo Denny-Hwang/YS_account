@@ -8,7 +8,7 @@ const MERCHANTS = [
   { keyword: '세이프웨이', type: 'expense', kind: 'variable', category: '식료품', envelope: '식료품', recurring_id: '', hit_count: 0 },
   { keyword: '주유', type: 'expense', kind: 'fixed', category: '유류비', envelope: '', recurring_id: 'R06', hit_count: 0 },
   { keyword: '관리비', type: 'expense', kind: 'fixed', category: '주거비', envelope: '', recurring_id: 'R02', hit_count: 0 },
-  { keyword: '레슨', type: 'income', kind: 'variable', category: '영주 레슨', envelope: '', recurring_id: '', hit_count: 5 }
+  { keyword: '레슨', type: 'income', kind: 'variable', category: '레슨', envelope: '', recurring_id: '', hit_count: 5 }
 ];
 
 test('normalize 는 소문자화하고 공백·기호를 제거한다', () => {
@@ -40,9 +40,9 @@ test('고정비 사전은 recurring_id 를 돌려준다', () => {
 });
 
 test('수입 사전은 type income 을 돌려준다', () => {
-  const r = classify('레슨 윤지', MERCHANTS);
+  const r = classify('레슨 학생A', MERCHANTS);
   assert.equal(r.type, 'income');
-  assert.equal(r.category, '영주 레슨');
+  assert.equal(r.category, '레슨');
 });
 
 test('가장 긴 keyword 가 우선한다', () => {

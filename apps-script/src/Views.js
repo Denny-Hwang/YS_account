@@ -99,6 +99,8 @@ function buildMonthlyView() {
   var M = '$B$1';
   var txMonth = monthPredicate(TX, M);
   var notDeleted = '(' + colRange(TX, 'status') + '<>"deleted")';
+  // "실제" 는 active/confirmed 만 센다. expected 는 예정이라 합계에 넣지 않는다(웹앱과 같은 기준).
+  var counted = '((' + colRange(TX, 'status') + '="active")+(' + colRange(TX, 'status') + '="confirmed"))';
   var amountUsd = colRange(TX, 'amount_usd');
 
   // 월 선택
@@ -115,7 +117,7 @@ function buildMonthlyView() {
   sheet.getRange(MV_ROWS.incomeTitle, 7).setValue('수입 합계').setFontWeight('bold');
   sheet.getRange(MV_ROWS.incomeTitle, 8).setFormula(
     '=SUMPRODUCT(' + txMonth + '*(' + colRange(TX, 'type') + '="income")*' +
-    notDeleted + '*' + amountUsd + ')'
+    counted + '*' + amountUsd + ')'
   );
   sheet.getRange(MV_ROWS.incomeStart, 1).setFormula(
     '=IFERROR(FILTER({' +
@@ -140,7 +142,7 @@ function buildMonthlyView() {
       colCell(REC, 'expected_amount', recRow) + ')/' + fxFormula() + ',N(' +
       colCell(REC, 'expected_amount', recRow) + ')))';
     var actual = 'SUMPRODUCT(' + txMonth + '*(' + colRange(TX, 'recurring_id') + '=' +
-      colCell(REC, 'id', recRow) + ')*' + notDeleted + '*' + amountUsd + ')';
+      colCell(REC, 'id', recRow) + ')*' + counted + '*' + amountUsd + ')';
     var state = 'IFERROR(INDEX(FILTER(' + colRange(TX, 'status') + ',' +
       colRange(TX, 'recurring_id') + '=' + colCell(REC, 'id', recRow) + ',LEFT(TEXT(' +
       colRange(TX, 'date') + ',"yyyy-mm-dd"),7)=' + M + '),1),"미기장")';
@@ -188,8 +190,8 @@ function buildMonthlyView() {
   sheet.getRange(MV_ROWS.catStart, 1).setFormula(
     '=IFERROR(SORT(UNIQUE(FILTER(' + colRange(TX, 'category') + ',LEFT(TEXT(' +
     colRange(TX, 'date') + ',"yyyy-mm-dd"),7)=' + M + ',' + colRange(TX, 'type') +
-    '="expense",' + colRange(TX, 'status') + '<>"deleted",' + colRange(TX, 'category') +
-    '<>""))),"")'
+    '="expense",' + colRange(TX, 'status') + '<>"deleted",' + colRange(TX, 'status') + '<>"expected",' +
+    colRange(TX, 'category') + '<>""))),"")'
   );
   var catLast = MV_ROWS.catStart + MV_ROWS.catCount - 1;
   var catFormulas = [];
@@ -197,7 +199,7 @@ function buildMonthlyView() {
     var crow = MV_ROWS.catStart + c;
     catFormulas.push([
       '=IF($A' + crow + '="","",SUMPRODUCT(' + txMonth + '*(' + colRange(TX, 'category') +
-        '=$A' + crow + ')*(' + colRange(TX, 'type') + '="expense")*' + notDeleted + '*' +
+        '=$A' + crow + ')*(' + colRange(TX, 'type') + '="expense")*' + counted + '*' +
         amountUsd + '))',
       '=IF($A' + crow + '="","",IFERROR($B' + crow + '/SUM($B$' + MV_ROWS.catStart +
         ':$B$' + catLast + '),""))'
@@ -257,10 +259,10 @@ function buildDashboard() {
   sheet.clear();
   ensureRows(sheet, 60);
 
-  var notDeleted = '(' + colRange(TX, 'status') + '<>"deleted")';
+  var counted = '((' + colRange(TX, 'status') + '="active")+(' + colRange(TX, 'status') + '="confirmed"))';
   var amountUsd = colRange(TX, 'amount_usd');
 
-  // 최근 12개월 수입·지출
+  // 최근 12개월 수입·지출 (active/confirmed 만. expected 는 예정이다)
   sheet.getRange('A1').setValue('■ 최근 12개월 수입·지출').setFontWeight('bold');
   sheet.getRange(2, 1, 1, 4).setValues([['월', '수입', '지출', '순저축']]).setFontWeight('bold');
   var monthly = [];
@@ -270,9 +272,9 @@ function buildDashboard() {
     var pred = '(LEFT(TEXT(' + colRange(TX, 'date') + ',"yyyy-mm-dd"),7)=' + monthCell + ')';
     monthly.push([
       '=TEXT(EOMONTH(TODAY(),-' + i + '),"yyyy-mm")',
-      '=SUMPRODUCT(' + pred + '*(' + colRange(TX, 'type') + '="income")*' + notDeleted +
+      '=SUMPRODUCT(' + pred + '*(' + colRange(TX, 'type') + '="income")*' + counted +
         '*' + amountUsd + ')',
-      '=SUMPRODUCT(' + pred + '*(' + colRange(TX, 'type') + '="expense")*' + notDeleted +
+      '=SUMPRODUCT(' + pred + '*(' + colRange(TX, 'type') + '="expense")*' + counted +
         '*' + amountUsd + ')',
       '=$B' + r + '-$C' + r
     ]);
