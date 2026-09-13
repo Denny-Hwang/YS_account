@@ -16,6 +16,93 @@ function rulesRound(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
+/** 'YYYY-MM-DD' → 에포크 기준 일수. 형식이 아니면 null. 시간대 영향을 받지 않게 UTC 로만 센다. */
+function rulesDayNumber(ymd) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || '').trim());
+  if (!m) {
+    return null;
+  }
+  return Math.round(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 86400000);
+}
+
+/** 에포크 기준 일수 → 'YYYY-MM-DD'. */
+function rulesFromDayNumber(n) {
+  var d = new Date(n * 86400000);
+  var mm = d.getUTCMonth() + 1;
+  var dd = d.getUTCDate();
+  return d.getUTCFullYear() + '-' + (mm < 10 ? '0' + mm : mm) + '-' + (dd < 10 ? '0' + dd : dd);
+}
+
+/**
+ * amount_rule 문자열을 해석한다.
+ *   'fixed'                              — expected_amount 를 그대로 쓴다
+ *   'income_pct:N'                       — 그 달 수입 합의 N%
+ *   'biweekly:<1회 금액>@<기준 급여일>'   — 2주급. 그 달 급여일 수 × 1회 금액
+ * 알 수 없는 값은 fixed 로 본다.
+ * @param {string} rule
+ * @return {{type: string, pct: (number|undefined), perCheck: (number|undefined), anchor: (string|undefined)}}
+ */
+function parseAmountRule(rule) {
+  var s = String(rule === null || rule === undefined ? '' : rule).trim();
+  var pct = /^income_pct:(\d+(?:\.\d+)?)$/.exec(s);
+  if (pct) {
+    return { type: 'income_pct', pct: Number(pct[1]) };
+  }
+  var bi = /^biweekly:(\d+(?:\.\d+)?)@(\d{4}-\d{2}-\d{2})$/.exec(s);
+  if (bi && rulesDayNumber(bi[2]) !== null) {
+    return { type: 'biweekly', perCheck: Number(bi[1]), anchor: bi[2] };
+  }
+  return { type: 'fixed' };
+}
+
+/**
+ * 그 달에 들어오는 2주급 급여일 목록(오름차순).
+ * 기준 급여일에서 14일 간격으로 앞뒤 어느 쪽으로든 센다. 기준일이 미래여도 된다.
+ * 1년 26회이므로 대부분의 달은 2개, 두 달은 3개가 나온다.
+ * @param {string} month 'YYYY-MM'
+ * @param {string} anchor 실제로 받은(또는 받을) 급여일 하나 'YYYY-MM-DD'
+ * @return {!Array<string>}
+ */
+function biweeklyPaydays(month, anchor) {
+  var a = rulesDayNumber(anchor);
+  var m = /^(\d{4})-(\d{2})$/.exec(String(month || '').trim());
+  if (a === null || !m) {
+    return [];
+  }
+  var year = Number(m[1]);
+  var mon = Number(m[2]);
+  var first = Math.round(Date.UTC(year, mon - 1, 1) / 86400000);
+  var last = Math.round(Date.UTC(year, mon, 0) / 86400000);
+  var out = [];
+  for (var d = a + Math.ceil((first - a) / 14) * 14; d <= last; d += 14) {
+    out.push(rulesFromDayNumber(d));
+  }
+  return out;
+}
+
+/**
+ * 정의와 월로 예상 금액을 구한다(정의 통화 기준). 봇과 웹앱이 같은 값을 내게 하는 곳이다.
+ * income_pct 는 그 달 수입 합이 필요하므로 호출자가 monthIncome 으로 넘긴다.
+ * 계산할 수 없으면 expected_amount 로 물러난다.
+ * @param {!Object} definition Recurring 행
+ * @param {string} month 'YYYY-MM'
+ * @param {number} monthIncome 그 달 수입 합(정의 통화가 아니라 USD 기준)
+ * @return {number}
+ */
+function expectedAmountFor(definition, month, monthIncome) {
+  var fallback = Number(definition.expected_amount) || 0;
+  var rule = parseAmountRule(definition.amount_rule);
+  if (rule.type === 'income_pct') {
+    var computed = rulesRound((Number(monthIncome) || 0) * rule.pct / 100);
+    return computed > 0 ? computed : fallback;
+  }
+  if (rule.type === 'biweekly') {
+    var count = biweeklyPaydays(month, rule.anchor).length;
+    return count > 0 ? rulesRound(rule.perCheck * count) : fallback;
+  }
+  return fallback;
+}
+
 /**
  * 고정 항목을 확정할 때 어느 행을 손댈지 정한다.
  * 그 달의 expected 행만 확정 대상이다. 이미 confirmed 인 행은 절대 덮어쓰지 않는다.
@@ -225,6 +312,9 @@ function monthScore(totals, envelopeStatuses, deviationCount) {
 
 if (typeof module !== 'undefined') {
   module.exports = {
+    parseAmountRule: parseAmountRule,
+    biweeklyPaydays: biweeklyPaydays,
+    expectedAmountFor: expectedAmountFor,
     pickConfirmTarget: pickConfirmTarget,
     matchRecurringName: matchRecurringName,
     undoPlan: undoPlan,

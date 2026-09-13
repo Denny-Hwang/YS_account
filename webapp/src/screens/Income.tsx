@@ -4,7 +4,7 @@ import { Bullet, Stat } from '../components/Charts'
 import { RowSheet } from '../components/RowSheet'
 import { Card, Empty, Notice } from '../components/Ui'
 import { TABS, availableMonths, nextIdFor, patchIn, type SheetRow, type Workbook } from '../lib/ledger'
-import { incomePlan } from '../lib/metrics'
+import { incomePlan, paydaysOf } from '../lib/metrics'
 import type { SheetsContext } from '../lib/sheets'
 
 const STATUS_LABEL: Record<string, string> = { expected: '예정', confirmed: '확정', active: '기록됨', deleted: '삭제됨' }
@@ -73,9 +73,11 @@ export function Income({ workbook, ctx, today, onChanged }: { workbook: Workbook
               target={s.expectedUsd}
               tone="income"
               hint={
-                s.kind === 'fixed'
-                  ? `${String(s.row.due_day)}일 · 봇에 "${s.name} 금액" 을 보내면 확정됩니다`
-                  : `카테고리 "${s.category}" 로 기록된 수입을 합칩니다`
+                s.kind !== 'fixed'
+                  ? `카테고리 "${s.category}" 로 기록된 수입을 합칩니다`
+                  : paydaysOf(s.row, month).length > 0
+                    ? `${month} 급여일 ${paydaysOf(s.row, month).length}번 (${paydaysOf(s.row, month).map((d) => d.slice(8)).join(', ')}일) · 받을 때마다 봇에 "${s.name} 금액" 을 보내면 확정됩니다`
+                    : `${String(s.row.due_day)}일 · 봇에 "${s.name} 금액" 을 보내면 확정됩니다`
               }
               onClick={() => setEditing(s.row)}
             />

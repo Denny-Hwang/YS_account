@@ -34,22 +34,31 @@ function monthIncomeTotal(month) {
 }
 
 /**
- * 정의와 월로 예상 금액을 구한다.
- * amount_rule 이 income_pct:N 이면 그 달 수입 합의 N% 를 쓴다(수입이 아직 없으면 0).
+ * 정의와 월로 예상 금액을 구한다(정의 통화 기준). 규칙 해석은 LedgerRules 가 한다.
+ *   income_pct:N — 그 달 수입 합의 N% (아직 수입이 없으면 expected_amount)
+ *   biweekly:M@YYYY-MM-DD — 2주급. 그 달 급여일 수 × M. 3번 받는 달은 저절로 1.5배가 된다
  * @return {number}
  */
 function recurringExpectedAmount(definition, month) {
-  var rule = String(definition.amount_rule || 'fixed').trim();
-  var pct = /^income_pct:(\d+(?:\.\d+)?)$/.exec(rule);
-  if (pct) {
-    var computed = roundCents(monthIncomeTotal(month) * Number(pct[1]) / 100);
-    if (computed > 0) {
-      return computed;
+  return expectedAmountFor(definition, month, monthIncomeTotal(month));
+}
+
+/**
+ * 그 달 예정 행을 어느 날짜에 만들지 정한다.
+ * 2주급은 그 달 첫 급여일, 나머지는 due_day 다.
+ * @param {!Object} definition
+ * @param {string} month
+ * @return {string} 'YYYY-MM-DD'
+ */
+function recurringDateForDefinition(definition, month) {
+  var rule = parseAmountRule(definition.amount_rule);
+  if (rule.type === 'biweekly') {
+    var days = biweeklyPaydays(month, rule.anchor);
+    if (days.length) {
+      return days[0];
     }
-    // 그 달 수입이 아직 기록되지 않았으면 expected_amount 를 예산 값으로 쓴다.
-    return Number(definition.expected_amount) || 0;
   }
-  return Number(definition.expected_amount) || 0;
+  return recurringDateFor(month, definition.due_day);
 }
 
 /** 통화에 맞춰 USD 환산액을 구한다. */
@@ -154,7 +163,7 @@ function postMonthlyRecurring(yyyyMm) {
     var now = nowIso();
     appendRow(SHEETS.TRANSACTIONS.name, {
       id: newId('tx'),
-      date: recurringDateFor(month, definition.due_day),
+      date: recurringDateForDefinition(definition, month),
       type: recurringType(definition),
       kind: 'fixed',
       category: String(definition.category || ''),
@@ -189,7 +198,8 @@ function recomputeIncomePct(yyyyMm) {
   var updated = 0;
 
   activeRecurring().forEach(function (definition) {
-    if (!/^income_pct:/.test(String(definition.amount_rule || '').trim())) {
+    // 2주급은 수입 기록과 무관하게 달력으로 정해지므로 다시 계산할 일이 없다.
+    if (parseAmountRule(definition.amount_rule).type !== 'income_pct') {
       return;
     }
     var id = String(definition.id).trim();

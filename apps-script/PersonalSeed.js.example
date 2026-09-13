@@ -27,6 +27,11 @@ var PERSONAL_ENVELOPES = {
 /**
  * 고정 항목. SHEETS.RECURRING 헤더와 같은 키를 쓴다. active 는 일부러 뺐다.
  * type: expense 고정비 / income 수입원 / transfer 저축(먼저 저축).
+ * amount_rule:
+ *   'fixed'                     — expected_amount 를 그대로 쓴다
+ *   'income_pct:10'             — 그 달 수입 합의 10%
+ *   'biweekly:3000@2026-01-02'  — 2주급. 1회 3000, 기준 급여일 하나만 적으면
+ *                                 그 달 급여일 수(보통 2, 1년에 두 달은 3)를 세어 곱한다
  */
 var PERSONAL_RECURRING = [
   { id: 'R01', name: '렌트', kind: 'fixed', category: '주거비', expected_amount: 1000, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 0, notes: '', type: 'expense' },
@@ -36,7 +41,7 @@ var PERSONAL_RECURRING = [
   { id: 'R08', name: '기부', kind: 'fixed', category: '기부', expected_amount: 100, currency: 'USD', due_day: 26, amount_rule: 'income_pct:10', tolerance_pct: 0, notes: '수입의 10%. 수입 기록이 없는 달은 expected_amount', type: 'expense' },
   { id: 'R12', name: '한국 대출 상환', kind: 'fixed', category: '부채상환', expected_amount: 1000000, currency: 'KRW', due_day: 1, amount_rule: 'fixed', tolerance_pct: 5, notes: '원화 고정. Debts D01 과 연결', type: 'expense' },
   { id: 'S01', name: '저축', kind: 'fixed', category: '저축', expected_amount: 300, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 0, notes: '먼저 저축. 월초에 옮기고 "저축 300" 으로 확정', type: 'transfer' },
-  { id: 'I01', name: '급여', kind: 'fixed', category: '급여', expected_amount: 3000, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 0, notes: '2주급 × 26 ÷ 12', type: 'income' },
+  { id: 'I01', name: '급여', kind: 'fixed', category: '급여', expected_amount: 6000, currency: 'USD', due_day: 1, amount_rule: 'biweekly:3000@2026-01-02', tolerance_pct: 0, notes: '2주급. 1회 3000, 기준 급여일 2026-01-02. 3번 받는 달은 9000 으로 잡힌다', type: 'income' },
   { id: 'I02', name: '레슨', kind: 'variable', category: '레슨', expected_amount: 200, currency: 'USD', due_day: 1, amount_rule: 'fixed', tolerance_pct: 0, notes: '건별 기록의 합', type: 'income' }
 ];
 

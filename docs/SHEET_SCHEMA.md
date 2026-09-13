@@ -43,13 +43,26 @@
 | expected_amount | 예상 금액(amount_rule 이 income_pct 면 수입이 없는 달의 대체값) |
 | currency | `USD` \| `KRW` |
 | due_day | 매월 결제일(1~31) |
-| amount_rule | `fixed` \| `income_pct:N` (그 달 수입의 N%) |
+| amount_rule | `fixed` \| `income_pct:N` (그 달 수입의 N%) \| `biweekly:M@YYYY-MM-DD` (2주급) |
 | tolerance_pct | 예상 대비 허용 편차 % (월 마감 보고 기준) |
 | active | `Y` \| `N` |
 | notes | 메모 |
 | type | `income` \| `expense` \| `transfer`. 비어 있으면 expense. `transfer` 는 "먼저 저축" 항목이다 |
 
 헤더 순서: `id, name, kind, category, expected_amount, currency, due_day, amount_rule, tolerance_pct, active, notes, type` (extendable)
+
+`amount_rule` 규칙 (해석은 `LedgerRules.parseAmountRule`, 계산은 `expectedAmountFor`. 봇과 웹앱이 같은 함수를 쓴다):
+
+| 값 | 그 달 예상 금액 |
+|---|---|
+| `fixed` | `expected_amount` 그대로 |
+| `income_pct:N` | 그 달 수입 합 × N%. 아직 수입 기록이 없으면 `expected_amount` |
+| `biweekly:M@YYYY-MM-DD` | 그 달 급여일 수 × M. `@` 뒤는 실제로 받은(또는 받을) 급여일 하나면 된다 |
+
+2주급은 1년 26회라 대부분의 달은 2회, 두 달은 3회다. `biweekly` 는 기준 급여일에서 14일 간격으로 세어
+그 달에 몇 번 들어오는지 자동으로 계산하므로, 3회 받는 달의 예상 수입이 저절로 1.5배가 된다.
+예정 행도 그 달 **첫 급여일**에 만들어지고, 아침 요약의 "오늘 예정" 도 급여일마다 뜬다.
+받을 때마다 봇에 `급여 2600` 을 보내면 첫 건은 예정 행을 확정하고 두 번째부터는 새 행이 쌓인다.
 
 - `kind=fixed`: 매월 `expected` 행이 생기고, 봇에 "이름 금액" 을 보내면 그 행이 `confirmed` 로 바뀐다.
   이미 확정된 뒤 같은 이름을 또 보내면 **새 confirmed 행**이 추가된다(두 번째 주유, 두 번째 공과금). 덮어쓰지 않는다.

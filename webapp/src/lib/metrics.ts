@@ -3,7 +3,7 @@
  * "실제" 는 status 가 active 또는 confirmed 인 행만 센다. expected 는 예정이고 deleted 는 없는 것이다.
  */
 import { daysInMonth } from '@shared/Budget.js'
-import { payoffMonths } from '@shared/LedgerRules.js'
+import { biweeklyPaydays, expectedAmountFor, parseAmountRule, payoffMonths } from '@shared/LedgerRules.js'
 import { assetUsd, budgetAmount, configList, configNumber, isCounted, latestAssetsTotal, monthsBack, recurringTypeOf, type SheetRow, type Workbook } from './ledger'
 
 const r2 = (n: number) => Math.round(n * 100) / 100
@@ -171,13 +171,16 @@ export interface RecurringActual {
  */
 export function expectedUsdOf(wb: Workbook, row: SheetRow, month: string): number {
   const fx = configNumber(wb.config, 'fx_usd_krw', 1332)
-  const pct = /^income_pct:(\d+(?:\.\d+)?)$/.exec(String(row.amount_rule ?? '').trim())
-  if (pct) {
-    const computed = r2((monthIncome(wb, month) * Number(pct[1])) / 100)
-    if (computed > 0) return computed
-  }
-  const raw = Number(row.expected_amount) || 0
-  return String(row.currency).trim().toUpperCase() === 'KRW' ? r2(raw / fx) : raw
+  const amount = expectedAmountFor(row, month, monthIncome(wb, month))
+  // income_pct 는 이미 USD 로 계산된 값이라 다시 환산하지 않는다.
+  if (parseAmountRule(String(row.amount_rule ?? '')).type === 'income_pct') return r2(amount)
+  return String(row.currency).trim().toUpperCase() === 'KRW' ? r2(amount / fx) : r2(amount)
+}
+
+/** 2주급 항목이면 그 달 급여일 목록. 아니면 빈 배열. 화면 설명에 쓴다. */
+export function paydaysOf(row: SheetRow, month: string): string[] {
+  const rule = parseAmountRule(String(row.amount_rule ?? ''))
+  return rule.type === 'biweekly' ? biweeklyPaydays(month, rule.anchor as string) : []
 }
 
 /**
