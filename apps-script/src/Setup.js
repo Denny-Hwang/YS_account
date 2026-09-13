@@ -44,18 +44,18 @@ var VALIDATIONS = {
 
 /** 초기 Recurring 시드. 금액은 사용자가 시트에서 수정한다. */
 var RECURRING_SEED = [
-  ['R01', '하우스 렌트', 'fixed', '주거비', 2100, 'USD', 1, 'fixed', 0, 'Y', ''],
-  ['R02', '관리비', 'fixed', '주거비', 207, 'USD', 1, 'fixed', 15, 'Y', ''],
-  ['R03', '어린이집', 'fixed', '교육비', 350, 'USD', 4, 'fixed', 0, 'Y', ''],
-  ['R04', '통신비', 'fixed', '통신비', 80, 'USD', 1, 'fixed', 10, 'Y', ''],
-  ['R05', '월 구독료', 'fixed', '구독', 173, 'USD', 1, 'fixed', 0, 'Y', ''],
-  ['R06', '유류비', 'fixed', '유류비', 250, 'USD', 1, 'fixed', 30, 'Y', 'ADR-0003 (c) 미결: variable 전환 가능'],
-  ['R07', '주일헌금', 'fixed', '헌금', 160, 'USD', 1, 'fixed', 0, 'Y', ''],
-  ['R08', '십일조', 'fixed', '십일조', '', 'USD', 26, 'income_pct:7', 0, 'Y', '그 달 수입 합의 7%'],
-  ['R09', '부채상환(미국)', 'fixed', '부채상환', '', 'USD', 15, 'fixed', 0, 'Y', '금액은 Debts 기준으로 입력'],
-  ['R10', '자동차 보험', 'fixed', '보험', '', 'USD', 1, 'fixed', 0, 'Y', ''],
-  ['R11', '건강보험(한국)', 'fixed', '보험', '', 'USD', 1, 'fixed', 0, 'Y', ''],
-  ['R12', '한국 대출 상환', 'fixed', '부채상환', '', 'KRW', 1, 'fixed', 5, 'Y', '한국 대출 월 상환 합계. 금액은 Debts 기준']
+  ['R01', '하우스 렌트', 'fixed', '주거비', 2100, 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
+  ['R02', '관리비', 'fixed', '주거비', 207, 'USD', 1, 'fixed', 15, 'Y', '', 'expense'],
+  ['R03', '어린이집', 'fixed', '교육비', 350, 'USD', 4, 'fixed', 0, 'Y', '', 'expense'],
+  ['R04', '통신비', 'fixed', '통신비', 80, 'USD', 1, 'fixed', 10, 'Y', '', 'expense'],
+  ['R05', '월 구독료', 'fixed', '구독', 173, 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
+  ['R06', '유류비', 'fixed', '유류비', 250, 'USD', 1, 'fixed', 30, 'Y', 'ADR-0003 (c) 미결: variable 전환 가능', 'expense'],
+  ['R07', '주일헌금', 'fixed', '헌금', 160, 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
+  ['R08', '십일조', 'fixed', '십일조', '', 'USD', 26, 'income_pct:7', 0, 'Y', '그 달 수입 합의 7%', 'expense'],
+  ['R09', '부채상환(미국)', 'fixed', '부채상환', '', 'USD', 15, 'fixed', 0, 'Y', '금액은 Debts 기준으로 입력', 'expense'],
+  ['R10', '자동차 보험', 'fixed', '보험', '', 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
+  ['R11', '건강보험(한국)', 'fixed', '보험', '', 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
+  ['R12', '한국 대출 상환', 'fixed', '부채상환', '', 'KRW', 1, 'fixed', 5, 'Y', '한국 대출 월 상환 합계. 금액은 Debts 기준', 'expense']
 ];
 // 실제 금액은 저장소에 두지 않는다. apps-script/PersonalSeed.js.example 을 보고
 // src/PersonalSeed.js(.gitignore 대상)를 만들어 applyPersonalDefaults() 로 덮어쓴다.

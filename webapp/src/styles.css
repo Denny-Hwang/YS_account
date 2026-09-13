@@ -181,13 +181,15 @@ table.data th { color: var(--muted); font-weight: 500; font-size: 12px; }
 /* ── 차트 ──────────────────────────────────────────────
    수입/지출 두 계열. dataviz 검증기를 통과한 조합이다.
    light  #2a78d6 / #eb6834, dark #3987e5 / #d95926 */
-.viz {
-  --series-income: #2a78d6;
-  --series-expense: #eb6834;
+.viz, .app {
+  --series-income: #2a78d6;   /* 수입·자산 */
+  --series-expense: #eb6834;  /* 지출·부채 */
+  --series-plan: #9aa3b2;     /* 계획·기준선 */
+  --series-over: #e34948;     /* 초과·모자람. 항상 글자 라벨과 함께 */
   --grid: var(--border);
 }
 @media (prefers-color-scheme: dark) {
-  .viz { --series-income: #3987e5; --series-expense: #d95926; }
+  .viz, .app { --series-income: #3987e5; --series-expense: #d95926; --series-plan: #6b7686; --series-over: #e66767; }
 }
 
 .legend { display: flex; gap: 14px; align-items: center; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
@@ -222,3 +224,52 @@ table.data th { color: var(--muted); font-weight: 500; font-size: 12px; }
 .rank .item .row { margin-bottom: 4px; }
 .rank .track { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .rank .track > span { display: block; height: 100%; border-radius: 999px; background: var(--series-income); }
+
+/* ── 차트 부품 (P10) ───────────────────────────── */
+.legend .swatch.dashed { background: none; border-top: 2px dashed; height: 0; width: 14px; border-radius: 0; vertical-align: 2px; }
+
+.stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stat strong { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.stat.md strong { font-size: 20px; }
+.stat .tone-bad { color: var(--bad); }
+.stat .tone-good { color: var(--good); }
+.stat .tone-muted { color: var(--muted); }
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 14px; }
+
+.bullet { padding: 8px 0; }
+.bullet + .bullet { border-top: 1px solid var(--border); }
+.bullet.clickable { cursor: pointer; }
+.bullet-label { font-weight: 600; }
+.bullet-val { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bullet-val .pill { margin-left: 6px; }
+.pill-over { background: color-mix(in srgb, var(--series-over) 18%, transparent); color: var(--series-over); font-weight: 600; }
+.bullet-track { position: relative; height: 12px; margin-top: 8px; border-radius: 999px; background: var(--surface-2); overflow: visible; }
+.bullet-target { position: absolute; left: 0; top: 0; height: 100%; border-radius: 999px; background: color-mix(in srgb, var(--series-plan) 35%, transparent); }
+.bullet-fill { position: absolute; left: 0; top: 2px; height: 8px; border-radius: 999px; }
+.bullet-pace { position: absolute; top: -3px; width: 2px; height: 18px; background: var(--text); opacity: 0.7; border-radius: 1px; }
+.bullet-hint { margin: 6px 0 0; }
+
+.rank .item.clickable { cursor: pointer; }
+.delta { margin-left: 6px; font-size: 11px; }
+.delta.up { color: var(--series-over); }
+.delta.down { color: var(--good); }
+
+.diverging { position: relative; display: flex; gap: 6px; }
+.diverging .zero { position: absolute; left: 0; right: 0; height: 1px; background: var(--grid); }
+.diverging .col { position: relative; flex: 1; min-width: 0; height: 100%; background: none; border: none; padding: 0; cursor: pointer; border-radius: 6px; }
+.diverging .col.selected { background: var(--surface-2); }
+.diverging .col i { position: absolute; left: 25%; width: 50%; border-radius: 3px; display: block; }
+
+.bars.stacked .col .stack { display: flex; flex-direction: column-reverse; width: 60%; height: 100%; justify-content: flex-start; gap: 2px; }
+.bars.stacked .col .stack i { width: 100%; border-radius: 3px; min-height: 0; }
+
+svg.line { width: 100%; height: 150px; display: block; overflow: visible; }
+svg.line .grid { stroke: var(--grid); stroke-width: 1; vector-effect: non-scaling-stroke; }
+
+.multiples { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.multiple .mini { position: relative; display: flex; align-items: flex-end; gap: 3px; height: 56px; margin-top: 6px; border-bottom: 1px solid var(--grid); }
+.multiple .mini i { flex: 1; min-height: 2px; border-radius: 3px 3px 0 0; display: block; }
+.multiple .mini-target { position: absolute; left: 0; right: 0; height: 0; border-top: 2px dashed var(--series-plan); }
+
+.tabbar button { padding: 8px 8px; font-size: 12px; }
+@media (min-width: 420px) { .tabbar button { padding: 8px 12px; font-size: 13px; } }

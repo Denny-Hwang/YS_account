@@ -225,6 +225,11 @@ function handleRecord(chatId, userId, parsed, messageId, logRow) {
     // 수입 힌트(레슨 등)가 사전 키워드이기도 하므로 힌트 제거 전 문자열로 한 번 더 조회한다.
     cls = classify(parsed.merchantTextRaw, merchants);
   }
+  if (!cls) {
+    // 사전에 없어도 Recurring 항목 이름이 그대로 들어 있으면 그 항목을 확정한다.
+    // "급여 2400", "자동차 보험 200" 처럼 사전에 따로 넣지 않은 고정 항목을 위한 길이다.
+    cls = matchRecurringByName(parsed.merchantTextRaw || parsed.merchantText);
+  }
 
   if (!cls) {
     var pendingKey = String(chatId) + ':' + String(messageId || Date.now());
@@ -362,6 +367,40 @@ function orderChoicesWithSuggestion(choices, merchantText, merchants) {
     return choices;
   }
   return [suggestion].concat(choices.filter(function (c) { return c !== suggestion; }));
+}
+
+/**
+ * 텍스트에 active=Y 인 Recurring 항목의 이름이 들어 있으면 그 항목을 분류 결과로 만든다.
+ * 이름이 긴 것을 먼저 본다. "한국 대출 상환" 이 "대출" 보다 먼저 잡히게.
+ * @param {string} text
+ * @return {?Object} classify() 결과와 같은 모양. 없으면 null.
+ */
+function matchRecurringByName(text) {
+  var target = normalize(text);
+  if (!target) {
+    return null;
+  }
+  var best = null;
+  activeRecurring().forEach(function (def) {
+    var key = normalize(def.name);
+    if (!key || target.indexOf(key) < 0) {
+      return;
+    }
+    if (!best || key.length > normalize(best.name).length) {
+      best = def;
+    }
+  });
+  if (!best) {
+    return null;
+  }
+  return {
+    keyword: String(best.name),
+    type: recurringType(best),
+    kind: 'fixed',
+    category: String(best.category || ''),
+    envelope: '',
+    recurring_id: String(best.id).trim()
+  };
 }
 
 /** 버튼 선택값을 분류 객체로 바꾼다. */

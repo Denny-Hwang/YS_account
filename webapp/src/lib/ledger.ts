@@ -208,3 +208,35 @@ export function availableMonths(workbook: Workbook, today: string): string[] {
   })
   return Array.from(set).sort().reverse()
 }
+
+/** "실제" 로 세는 상태. expected 는 예정이라 빼고, deleted 는 없는 것이다. */
+export function isCounted(row: SheetRow): boolean {
+  const s = String(row.status).trim()
+  return s === 'active' || s === 'confirmed'
+}
+
+/** Recurring 정의의 유형. type 열이 비어 있으면 expense(이전 시트와 호환). */
+export function recurringTypeOf(row: SheetRow): 'income' | 'expense' {
+  return String(row.type ?? '').trim().toLowerCase() === 'income' ? 'income' : 'expense'
+}
+
+/** fromMonth 를 마지막으로 count 개월(오래된 순). */
+export function monthsBack(fromMonth: string, count: number): string[] {
+  const [y, m] = fromMonth.split('-').map(Number)
+  const out: string[] = []
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(y, m - 1 - i, 1))
+    out.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`)
+  }
+  return out
+}
+
+/** 접두사 + 2자리 번호로 다음 id. 예: R13, I02, D07 */
+export function nextIdFor(rows: SheetRow[], prefix: string): string {
+  let max = 0
+  rows.forEach((row) => {
+    const m = new RegExp(`^${prefix}(\\d+)$`).exec(String(row.id).trim())
+    if (m) max = Math.max(max, Number(m[1]))
+  })
+  return `${prefix}${String(max + 1).padStart(2, '0')}`
+}

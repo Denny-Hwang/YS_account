@@ -67,6 +67,12 @@ function activeRecurring() {
   });
 }
 
+/** Recurring 정의의 유형. type 열이 비어 있으면 expense 다(이전 시트와 호환). */
+function recurringType(definition) {
+  var t = String(definition.type || '').trim().toLowerCase();
+  return t === 'income' ? 'income' : 'expense';
+}
+
 /**
  * 그 달의 고정비 expected 행을 만든다. 멱등: 이미 있으면 건너뛴다.
  * @param {string=} yyyyMm 생략하면 이번 달
@@ -91,13 +97,16 @@ function postMonthlyRecurring(yyyyMm) {
     if (!id || posted[id]) {
       return; // 이미 있으면 건너뜀
     }
+    if (String(definition.kind || 'fixed').trim() !== 'fixed') {
+      return; // variable 은 예상치일 뿐이다. 레슨처럼 건별로 기록되므로 예약 행을 만들지 않는다
+    }
     var currency = String(definition.currency || 'USD').trim().toUpperCase() || 'USD';
     var amount = recurringExpectedAmount(definition, month);
     var now = nowIso();
     appendRow(SHEETS.TRANSACTIONS.name, {
       id: newId('tx'),
       date: recurringDateFor(month, definition.due_day),
-      type: 'expense',
+      type: recurringType(definition),
       kind: 'fixed',
       category: String(definition.category || ''),
       envelope: '',
