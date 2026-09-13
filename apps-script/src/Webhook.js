@@ -405,14 +405,26 @@ function buildRecordReply(parsed, result) {
   if (!result.envelope) {
     return { text: '✓ ' + formatUsd(parsed.amount_usd) + ' 기록', keyboard: null };
   }
+  // 지난 달 지출을 뒤늦게 적는 경우가 있다. 그때는 "오늘 남은" 이 뜻이 없으므로
+  // 그 달 말일 기준으로 결산해 보여 준다. 기준일을 today 로 두면 그 달 지출이 하나도 안 잡힌다.
   var month = parsed.date.slice(0, 7);
+  var today = todayStr();
+  var isCurrentMonth = month === today.slice(0, 7);
   var status = envelopeStatus({
     budget: getBudgetAmount(month, result.envelope),
     transactions: monthTransactions(month),
     envelope: result.envelope,
-    today: todayStr()
+    today: isCurrentMonth ? today : month + '-' + daysInMonth(month)
   });
   var prefix = result.mode === 'refund' ? '↩︎ 환불 ' + formatUsd(Math.abs(parsed.amount_usd)) + '\n' : '';
+  if (!isCurrentMonth) {
+    return {
+      text: prefix + '✓ ' + month + ' ' + result.envelope + ' ' + formatUsd(parsed.amount_usd) + ' 기록\n' +
+        signalGlyph(status.signal) + ' ' + month + ' 실행 ' + formatUsd(status.spentTotal) +
+        ' / 예산 ' + formatUsd(status.budget) + ' · 잔액 ' + formatUsd(status.remaining),
+      keyboard: null
+    };
+  }
   return {
     text: prefix + formatStatusLine(status, result.envelope),
     keyboard: overspendKeyboard(month, result.envelope, status)
@@ -434,6 +446,9 @@ function formatAmountIn(amount, currency) {
 function overspendKeyboard(month, envelope, status) {
   if (status.signal !== 'red') {
     return null;
+  }
+  if (month !== currentMonthStr()) {
+    return null; // 예산 이동은 이번 달만. 버튼 콜백이 이번 달 Budgets 를 고치기 때문이다.
   }
   var envelopes = getConfigList('envelopes');
   var from = getConfig('overspend_envelope', '');
