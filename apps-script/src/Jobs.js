@@ -5,7 +5,10 @@
  */
 
 /** 이 파일이 설치하는 트리거 핸들러. installTriggers 는 이 이름들만 지우고 다시 만든다. */
-var JOB_HANDLERS = ['dailySummary', 'weeklyDigest', 'monthlyOpen', 'monthlyClose'];
+var JOB_HANDLERS = ['dailySummary', 'weeklyDigest', 'monthlyOpen', 'monthlyClose', 'webhookWatchdog'];
+
+/** 한 번의 복구에서 처리할 최대 업데이트 수. Apps Script 실행 시간(6분) 안에 끝나야 한다. */
+var DRAIN_BATCH_LIMIT = 25;
 
 /** "이 달은 열렸다" 표시를 캐시에 두는 시간(초). 6시간. */
 var MONTH_OPEN_FLAG_TTL_SECONDS = 21600;
@@ -447,12 +450,97 @@ function buildMonthlyCloseReport(month, asOf, send) {
 }
 
 /**
- * 시간 트리거를 다시 설치한다. 이 파일의 핸들러(JOB_HANDLERS)만 지우고 네 개를 등록한다(멱등).
+ * 웹훅이 막혔는지 보고 막혔으면 되살린다.
+ *
+ * Apps Script 웹 앱은 응답을 script.googleusercontent.com 으로 넘기는 302 를 돌려준다.
+ * doPost 는 정상 실행되지만 Telegram 은 2xx 를 못 받아 배달 실패로 기록하고,
+ * 실패가 쌓이면 배달 간격을 늘린다. 그러다 아예 안 들어오는 상태가 된다.
+ *
+ * 그래서 밀린 건이 보이면 웹훅을 잠시 떼고 getUpdates 로 직접 받아 처리한 뒤 다시 붙인다.
+ * 메시지를 버리지 않으면서 Telegram 쪽 실패 누적도 초기화된다.
+ *
+ * 밀린 건이 없으면 아무것도 하지 않고 아무 말도 하지 않는다.
+ * @return {string} 한 일. 할 일이 없었으면 빈 문자열
+ */
+function webhookWatchdog() {
+  var info = tg('getWebhookInfo');
+  if (!info) {
+    Logger.log('웹훅 상태를 읽지 못했습니다. Log 탭을 확인하세요.');
+    return '';
+  }
+  var pending = Number((info.result || {}).pending_update_count) || 0;
+  if (pending < 1) {
+    return ''; // 정상. 조용히 지나간다
+  }
+
+  var result = drainPendingUpdates();
+  var msg = '웹훅 복구: 밀린 ' + pending + '건 중 ' + result.processed + '건 처리' +
+    (result.registered ? '' : ' · ⚠ 웹훅 재등록 실패');
+  logEvent('', '[감시]', '', msg);
+  Logger.log(msg);
+  return msg;
+}
+
+/**
+ * 밀린 업데이트를 직접 받아 처리한다.
+ *
+ * 순서가 중요하다. 웹훅이 걸려 있으면 getUpdates 를 쓸 수 없으므로 먼저 뗀다.
+ * 뗄 때 drop_pending_updates 를 주지 않아야 밀린 메시지가 남는다.
+ * 처리한 뒤에는 그 다음 offset 으로 getUpdates 를 한 번 더 불러 Telegram 에 확인시킨다.
+ * 마지막에 웹훅을 다시 붙인다. 이때도 남은 건을 버리지 않는다(다음 감시가 가져간다).
+ *
+ * 중간에 무엇이 실패해도 웹훅 재등록은 반드시 시도한다. 안 붙이면 봇이 죽는다.
+ * @return {{processed: number, registered: boolean}}
+ */
+function drainPendingUpdates() {
+  var processed = 0;
+  var lastId = null;
+  var registered = false;
+  try {
+    tg('deleteWebhook', {}); // 밀린 건은 남긴다
+    var updates = getUpdates(null, DRAIN_BATCH_LIMIT);
+    for (var i = 0; i < updates.length; i++) {
+      lastId = updates[i].update_id;
+      try {
+        if (processUpdate(updates[i])) {
+          processed++;
+        }
+      } catch (err) {
+        // 한 건이 터져도 나머지는 살린다. 그 건은 Log 에 남기고 넘어간다
+        logEvent('', '[감시] update 처리 실패', '', String(err && err.stack ? err.stack : err));
+      }
+    }
+    if (lastId !== null) {
+      getUpdates(lastId + 1, 1); // 여기까지 받았다고 Telegram 에 알린다
+    }
+  } finally {
+    // 여기서 예외가 나면 웹훅이 떼인 채로 남아 봇이 죽는다. 무슨 일이 있어도 삼킨다.
+    registered = tryRegisterWebhook() || tryRegisterWebhook();
+    if (!registered) {
+      logEvent('', '[감시] 웹훅 재등록 실패', '', 'Telegram.gs 의 setWebhook 을 손으로 실행하세요');
+    }
+  }
+  return { processed: processed, registered: registered };
+}
+
+/** 웹훅 재등록을 시도한다. WEBAPP_URL 미설정 같은 예외까지 삼킨다. */
+function tryRegisterWebhook() {
+  try {
+    return !!registerWebhook(false);
+  } catch (err) {
+    logEvent('', '[감시] 웹훅 재등록 예외', '', String(err));
+    return false;
+  }
+}
+
+/**
+ * 시간 트리거를 다시 설치한다. 이 파일의 핸들러(JOB_HANDLERS)만 지우고 다섯 개를 등록한다(멱등).
  * 사용자가 따로 만든 트리거는 건드리지 않는다.
  * - dailySummary: 매일 Config.daily_summary_hour 시
  * - weeklyDigest: 매일 19시 (요일은 weeklyDigest 가 판정)
  * - monthlyOpen: 매월 1일 06시
  * - monthlyClose: 매일 21시 (말일 여부는 monthlyClose 가 판정)
+ * - webhookWatchdog: 5분마다 (밀린 건이 없으면 아무것도 안 한다)
  */
 function installTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (trigger) {
@@ -467,9 +555,10 @@ function installTriggers() {
   ScriptApp.newTrigger('weeklyDigest').timeBased().everyDays(1).atHour(19).create();
   ScriptApp.newTrigger('monthlyOpen').timeBased().onMonthDay(1).atHour(6).create();
   ScriptApp.newTrigger('monthlyClose').timeBased().everyDays(1).atHour(21).create();
+  ScriptApp.newTrigger('webhookWatchdog').timeBased().everyMinutes(5).create();
 
-  var msg = '트리거 4개 설치: dailySummary ' + summaryHour + '시, weeklyDigest 매일 19시(요일은 Config), ' +
-    'monthlyOpen 1일 06시, monthlyClose 매일 21시(말일에만 동작)';
+  var msg = '트리거 5개 설치: dailySummary ' + summaryHour + '시, weeklyDigest 매일 19시(요일은 Config), ' +
+    'monthlyOpen 1일 06시, monthlyClose 매일 21시(말일에만 동작), webhookWatchdog 5분마다';
   Logger.log(msg);
   return msg;
 }

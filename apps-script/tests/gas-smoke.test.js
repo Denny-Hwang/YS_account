@@ -47,7 +47,12 @@ class Sheet {
 
 function buildContext(options) {
   const sheets = {};
-  const props = { SPREADSHEET_ID: 'demo', WEBHOOK_SECRET: 'secret', BOT_TOKEN: 'token' };
+  const props = {
+    SPREADSHEET_ID: 'demo',
+    WEBHOOK_SECRET: 'secret',
+    BOT_TOKEN: 'token',
+    WEBAPP_URL: 'https://script.google.com/macros/s/demo-deploy-id-abcdef/exec'
+  };
   const cache = new Map();
   const sent = [];
   const ss = {
@@ -89,10 +94,18 @@ function buildContext(options) {
         const payload = JSON.parse(opt.payload || '{}');
         sent.push({ method, payload });
         const result = method === 'sendMessage' ? { message_id: sent.length } : true;
-        return { getResponseCode: () => 200, getContentText: () => JSON.stringify({ ok: true, result }), getAllHeaders: () => ({}) };
+        let body = result;
+        if (method === 'getWebhookInfo') {
+          body = { pending_update_count: (options && options.pending) || 0 };
+        } else if (method === 'getUpdates') {
+          const queue = (options && options.queue) || [];
+          const offset = payload.offset;
+          body = offset === undefined ? queue.splice(0, payload.limit || 100) : [];
+        }
+        return { getResponseCode: () => 200, getContentText: () => JSON.stringify({ ok: true, result: body }), getAllHeaders: () => ({}) };
       }
     },
-    ScriptApp: { getProjectTriggers: () => [], newTrigger: () => ({ timeBased() { return this; }, everyDays() { return this; }, atHour() { return this; }, onMonthDay() { return this; }, create() {} }) },
+    ScriptApp: { getProjectTriggers: () => [], newTrigger: () => ({ timeBased() { return this; }, everyDays() { return this; }, everyMinutes() { return this; }, atHour() { return this; }, onMonthDay() { return this; }, create() {} }) },
     Date: options && options.now ? class extends Date { constructor(...a) { super(...(a.length ? a : [options.now])); } static now() { return new Date(options.now).getTime(); } } : Date
   };
   ctx.sent = sent; ctx.sheets = sheets; ctx.cache = cache;
@@ -469,4 +482,82 @@ test('probeWebappUrl 은 배포 URL 상태를 읽고 비밀값을 감춘다', ()
   assert.equal(probe.probeWebappUrl(), 302);
   assert.match(lines.join('\n'), /액세스 권한.*모든 사용자/s);
   assert.ok(!/signin\?x=1/.test(lines.join('\n')), '이동 주소 전체가 아니라 도메인만 찍는다');
+});
+
+test('webhookWatchdog 은 밀린 건이 없으면 아무것도 하지 않는다', () => {
+  const ctx = fresh();
+  const before = ctx.sent.length;
+  assert.equal(ctx.webhookWatchdog(), '', '조용히 지나가야 한다');
+  const calls = ctx.sent.slice(before).map((s) => s.method);
+  assert.deepEqual(calls, ['getWebhookInfo'], '상태만 보고 끝낸다');
+});
+
+test('webhookWatchdog 은 밀린 메시지를 버리지 않고 처리한 뒤 웹훅을 다시 붙인다', () => {
+  const queue = [
+    { update_id: 901, message: { message_id: 901, chat: { id: 1 }, from: { id: 11 }, text: '코스트코 40' } },
+    { update_id: 902, message: { message_id: 902, chat: { id: 1 }, from: { id: 11 }, text: '다이소 12' } },
+  ];
+  const ctx = buildContext({ now: '2026-09-13T20:00:00Z', pending: 2, queue });
+  ctx.setupSheet(); ctx.seedRecurring(); ctx.seedMerchants();
+  ctx.setConfig('allowed_telegram_ids', '11,22');
+  ctx.applyBudgetAmounts('2026-09', { '식료품': 1000, '생필품': 100, '예비비': 100 });
+  ctx.invalidateReadCache();
+
+  const msg = ctx.webhookWatchdog();
+  assert.match(msg, /웹훅 복구: 밀린 2건 중 2건 처리/);
+  assert.ok(!/재등록 실패/.test(msg));
+
+  // 두 건 모두 원장에 들어갔다
+  const tx = rowsOf(ctx, 'Transactions');
+  assert.ok(tx.some((r) => r.merchant === '코스트코' && r.amount === 40));
+  assert.ok(tx.some((r) => r.merchant === '다이소' && r.amount === 12));
+
+  // 순서: 웹훅을 떼고 → 받고 → 확인하고 → 다시 붙인다
+  const calls = ctx.sent.map((s) => s.method).filter((m) => /Webhook|getUpdates/.test(m));
+  assert.deepEqual(calls, ['getWebhookInfo', 'deleteWebhook', 'getUpdates', 'getUpdates', 'setWebhook']);
+
+  // 다시 붙일 때 남은 건을 버리면 안 된다
+  const reset = ctx.sent.filter((s) => s.method === 'setWebhook').slice(-1)[0];
+  assert.equal(reset.payload.drop_pending_updates, false);
+  const removal = ctx.sent.filter((s) => s.method === 'deleteWebhook').slice(-1)[0];
+  assert.ok(!removal.payload.drop_pending_updates, '뗄 때도 버리면 안 된다');
+});
+
+test('복구로 들어온 건은 웹훅으로 다시 와도 두 번 기록되지 않는다', () => {
+  const queue = [
+    { update_id: 901, message: { message_id: 901, chat: { id: 1 }, from: { id: 11 }, text: '코스트코 40' } },
+  ];
+  const ctx = buildContext({ now: '2026-09-13T20:00:00Z', pending: 1, queue });
+  ctx.setupSheet(); ctx.seedRecurring(); ctx.seedMerchants();
+  ctx.setConfig('allowed_telegram_ids', '11,22');
+  ctx.applyBudgetAmounts('2026-09', { '식료품': 1000, '생필품': 100, '예비비': 100 });
+  ctx.invalidateReadCache();
+
+  ctx.webhookWatchdog();
+  assert.equal(rowsOf(ctx, 'Transactions').filter((r) => r.merchant === '코스트코').length, 1);
+
+  // Telegram 이 같은 update 를 웹훅으로 재전송한 상황
+  ctx.doPost({
+    parameter: { token: 'secret' },
+    postData: { contents: JSON.stringify({ update_id: 901, message: { message_id: 901, chat: { id: 1 }, from: { id: 11 }, text: '코스트코 40' } }) },
+  });
+  assert.equal(rowsOf(ctx, 'Transactions').filter((r) => r.merchant === '코스트코').length, 1, '중복 기록 금지');
+});
+
+test('복구 중 무슨 일이 있어도 웹훅 재등록은 시도한다', () => {
+  const queue = [{ update_id: 901, message: { message_id: 901, chat: { id: 1 }, from: { id: 11 }, text: '코스트코 40' } }];
+  const ctx = buildContext({ now: '2026-09-13T20:00:00Z', pending: 1, queue });
+  ctx.setupSheet(); ctx.seedRecurring(); ctx.seedMerchants();
+  ctx.setConfig('allowed_telegram_ids', '11,22');
+  ctx.applyBudgetAmounts('2026-09', { '식료품': 1000, '생필품': 100, '예비비': 100 });
+  ctx.invalidateReadCache();
+  // 배포 URL 이 없으면 registerWebhook 이 throw 한다. 그래도 봇을 죽이면 안 된다
+  ctx.PropertiesService.getScriptProperties().setProperty('WEBAPP_URL', '');
+
+  const msg = ctx.webhookWatchdog();
+  assert.match(msg, /웹훅 재등록 실패/, '실패를 숨기지 않는다');
+  assert.equal(rowsOf(ctx, 'Transactions').filter((r) => r.merchant === '코스트코').length, 1,
+    '재등록이 실패해도 받은 메시지는 살린다');
+  assert.ok(rowsOf(ctx, 'Log').some((r) => String(r.result).indexOf('setWebhook 을 손으로 실행') >= 0),
+    '손으로 할 일을 Log 에 남긴다');
 });

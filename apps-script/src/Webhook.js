@@ -47,47 +47,7 @@ function doPost(e) {
       return ContentService.createTextOutput('ok');
     }
 
-    var update = JSON.parse(e.postData.contents);
-    var updateId = update.update_id;
-
-    // 두 번째 게이트: 같은 update_id 는 한 번만 처리한다.
-    // Telegram 은 2xx 를 제때 받지 못하면 같은 update 를 재전송하는데,
-    // 그대로 두면 Transactions 에 같은 행이 여러 개 쌓인다.
-    if (!claimUpdate(updateId)) {
-      return ContentService.createTextOutput('ok');
-    }
-
-    var message = update.message;
-    var callback = update.callback_query;
-    if (!message && !callback) {
-      logEvent('', '[무시]', '', 'message 도 callback 도 아닌 update', updateId);
-      return ContentService.createTextOutput('ok');
-    }
-
-    var from = message ? message.from : callback.from;
-    var userId = from && from.id;
-    var allowed = getConfigList('allowed_telegram_ids');
-    if (!userId || allowed.indexOf(String(userId)) < 0) {
-      // 여기까지 왔다는 것은 token 은 맞았다는 뜻이다. Config.allowed_telegram_ids 에
-      // 넣을 실제 id 를 Log 에 남겨 두면 오타를 바로 찾을 수 있다.
-      logEvent(userId, message ? (message.text || '[사진]') : 'callback:' + callback.data, '',
-        '거부: Config.allowed_telegram_ids 에 없는 id (' + userId + ')', updateId);
-      return ContentService.createTextOutput('ok');
-    }
-
-    if (message) {
-      if (message.photo || (message.document && /^image\//.test(String(message.document.mime_type || '')))) {
-        var photoLogRow = logEvent(userId, '[사진]', '', '수신', updateId);
-        handleReceipt(message.chat.id, userId, message, photoLogRow);
-        return ContentService.createTextOutput('ok');
-      }
-      var text = message.text || '';
-      var logRow = logEvent(userId, text, '', '수신', updateId);
-      handleMessage(message.chat.id, userId, text, logRow);
-    } else {
-      logEvent(userId, 'callback:' + callback.data, '', '수신', updateId);
-      handleCallback(callback);
-    }
+    processUpdate(JSON.parse(e.postData.contents));
   } catch (err) {
     try {
       logEvent('', 'doPost 예외', '', String(err && err.stack ? err.stack : err));
@@ -96,6 +56,62 @@ function doPost(e) {
     }
   }
   return ContentService.createTextOutput('ok');
+}
+
+/**
+ * Telegram update 하나를 처리한다.
+ *
+ * 웹훅(doPost)과 밀린 건 복구(drainPendingUpdates)가 같은 길을 쓴다.
+ * 어느 쪽으로 들어오든 claimUpdate 가 같은 update 를 두 번 처리하지 않게 막는다.
+ *
+ * @param {!Object} update Telegram update 객체
+ * @return {boolean} 이 호출이 실제로 처리했으면 true
+ */
+function processUpdate(update) {
+  if (!update) {
+    return false;
+  }
+  var updateId = update.update_id;
+
+  // 같은 update_id 는 한 번만 처리한다.
+  // Telegram 은 2xx 를 제때 받지 못하면 같은 update 를 재전송하는데,
+  // 그대로 두면 Transactions 에 같은 행이 여러 개 쌓인다.
+  if (!claimUpdate(updateId)) {
+    return false;
+  }
+
+  var message = update.message;
+  var callback = update.callback_query;
+  if (!message && !callback) {
+    logEvent('', '[무시]', '', 'message 도 callback 도 아닌 update', updateId);
+    return false;
+  }
+
+  var from = message ? message.from : callback.from;
+  var userId = from && from.id;
+  var allowed = getConfigList('allowed_telegram_ids');
+  if (!userId || allowed.indexOf(String(userId)) < 0) {
+    // 여기까지 왔다는 것은 token 은 맞았다는 뜻이다. Config.allowed_telegram_ids 에
+    // 넣을 실제 id 를 Log 에 남겨 두면 오타를 바로 찾을 수 있다.
+    logEvent(userId, message ? (message.text || '[사진]') : 'callback:' + callback.data, '',
+      '거부: Config.allowed_telegram_ids 에 없는 id (' + userId + ')', updateId);
+    return false;
+  }
+
+  if (message) {
+    if (message.photo || (message.document && /^image\//.test(String(message.document.mime_type || '')))) {
+      var photoLogRow = logEvent(userId, '[사진]', '', '수신', updateId);
+      handleReceipt(message.chat.id, userId, message, photoLogRow);
+      return true;
+    }
+    var text = message.text || '';
+    var logRow = logEvent(userId, text, '', '수신', updateId);
+    handleMessage(message.chat.id, userId, text, logRow);
+    return true;
+  }
+  logEvent(userId, 'callback:' + callback.data, '', '수신', updateId);
+  handleCallback(callback);
+  return true;
 }
 
 /**

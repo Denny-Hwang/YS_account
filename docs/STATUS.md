@@ -2,8 +2,10 @@
 
 ## 현재 단계
 - **P12 완료** (2026-09-15): 원장 달력 뷰, 예정/집행 상태 구분, 금액 확정 고정비 예산 선반영(`committed` 상태).
-  웹훅이 조용히 요청을 버리지 않게 하고 `diagnoseWebhook` 진단 함수 추가.
-  검증: `apps-script` 테스트 102개, `webapp` 테스트 8개, 타입 검사·빌드 통과.
+  웹훅 진단(`diagnoseWebhook`, `probeWebappUrl`)과 자동 복구(`webhookWatchdog`, 5분 트리거).
+  Apps Script 웹 앱이 Telegram 에 302 를 돌려주는 구조적 문제를 실측으로 확인하고, 밀린 건을
+  버리지 않고 `getUpdates` 로 직접 받아 처리하는 방식으로 우회했다.
+  검증: `apps-script` 테스트 107개, `webapp` 테스트 8개, 타입 검사·빌드 통과.
 - **P11 완료** (2026-09-13): 리뷰 보고서(`docs/REVIEW-2026-09-13.md`)의 제안을 전부 반영.
   고정 항목 재확정 덮어쓰기 수정, 취소 정확화, "오늘 남은 돈" 헤드라인과 신호등, 분류 버튼 만료 제거,
   금액 후보 선택, 월 시작 보정, 시트 뷰 기준 통일, 웹앱 부분 쓰기, 먼저 저축·연간비·환불·부채 상각·비상금,
@@ -13,7 +15,8 @@
 
 ## 다음 할 일
 0. **P12 반영.** `clasp push` → 새 버전 배포 → `Setup.gs` 의 `setupSheet`(Recurring 에 `certainty` 열 추가)
-   → `Recurring.gs` 의 `resyncReservedStatuses`(이미 만들어진 예약 행 보정) → `Views.gs` 의 `buildMonthlyView`·`buildDashboard`(수식 갱신).
+   → `Recurring.gs` 의 `resyncReservedStatuses`(이미 만들어진 예약 행 보정) → `Views.gs` 의 `buildMonthlyView`·`buildDashboard`(수식 갱신)
+   → `Jobs.gs` 의 `installTriggers`(웹훅 감시 트리거 추가).
 1. **실제 연결.** `docs/SETUP.md` 를 순서대로 따라 시트·봇·트리거·웹앱을 붙인다.
    기존 시트가 있다면 `setupSheet` 을 한 번 실행해 `Debts.recurring_id`, `Assets.fx_usd_krw`, Config 새 키가 붙게 한다.
    `installTriggers` 를 다시 실행해 `weeklyDigest` 트리거를 추가한다. 배포는 "새 버전" 으로.
@@ -40,6 +43,7 @@
 | 리뷰 | 저장소 무결성 검증과 재무 관점 서비스 리뷰 보고서 | 2026-09-13 |
 | P11 | P11: 리뷰 제안 전부 반영 | 2026-09-13 |
 | P12 | P12: 원장 달력 뷰와 금액 확정 고정비 예산 선반영 | 2026-09-15 |
+| P12.1 | P12.1: 웹훅 302 자동 복구 감시 | 2026-09-15 |
 
 ## 미결 사항
 - 없음. ADR-0003 의 세 항목이 모두 결정됐다.

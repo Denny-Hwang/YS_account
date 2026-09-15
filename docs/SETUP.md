@@ -135,7 +135,23 @@ Apps Script 편집기 → 우상단 `배포` → `새 배포` → 유형 `웹 �
 |---|---|---|
 | `HTTP 200` | 웹 앱은 정상. 등록된 웹훅이 예전 배포를 봄 | `setWebhook` 재실행 |
 | `HTTP 302` + `accounts.google.com` | 배포가 로그인을 요구함 | 액세스 권한을 "모든 사용자" 로 바꾸고 새 버전 배포 |
-| `HTTP 302` + `googleusercontent.com` | 배포 설정 문제가 아님 | `setWebhook` 으로 밀린 건을 비운다 |
+| `HTTP 302` + `googleusercontent.com` | 배포 설정 문제가 아님(아래 참고) | `webhookWatchdog` 이 자동으로 처리한다 |
+
+#### 302 는 왜 없앨 수 없나
+
+Apps Script 웹 앱은 응답 본문을 `script.googleusercontent.com` 에서 내보내려고 302 리디렉션을 건다.
+Telegram 은 이 이동을 따라가지 않으므로 **성공한 배달도 전부 실패로 기록한다.** 배포 설정 문제가 아니고
+코드로 바꿀 수도 없다. 실제로 일어나는 일은 이렇다.
+
+1. 메시지가 들어오면 `doPost` 는 정상 실행된다(그래서 `Log` 에 남고 회신도 간다)
+2. Telegram 은 302 를 실패로 보고 재전송한다 → `claimUpdate` 가 중복을 막아 회신은 한 번만 간다
+3. **실패가 쌓이면 Telegram 이 배달 간격을 늘린다.** 그러다 아예 안 들어오는 상태가 된다
+
+3번이 "회신이 올 때도 있고 안 올 때도 있는" 진짜 원인이다. `Jobs.gs` 의 `webhookWatchdog` 이
+5분마다 밀린 건을 보고, 있으면 웹훅을 잠시 떼고 `getUpdates` 로 직접 받아 처리한 뒤 다시 붙인다.
+메시지를 버리지 않으면서 Telegram 쪽 실패 누적도 초기화된다. 밀린 건이 없으면 아무것도 하지 않는다.
+
+평소에는 지금처럼 웹훅으로 1~2초 안에 회신이 오고, 막히더라도 최대 5분 안에 저절로 풀린다.
 
 - **회신이 올 때도 있고 안 올 때도 있다** → `Log` 탭 꼬리를 보고 셋 중 어디인지 가른다.
   1. `수신` 줄이 있고 회신만 없다 → 회신 쪽 문제다. 같은 줄 근처의 `tg:sendMessage` 오류를 본다.
@@ -547,6 +563,8 @@ Apps Script 편집기 왼쪽 파일 목록에서 파일을 고른 뒤, 상단 �
 | `getWebhookInfo` | `Telegram.gs` | 웹훅 상태와 마지막 오류 확인 |
 | `diagnoseWebhook` | `Telegram.gs` | 회신이 안 올 때 원인 후보를 한 번에 진단 |
 | `probeWebappUrl` | `Telegram.gs` | 배포 URL 을 직접 두드려 실제 상태 코드 확인 |
+| `webhookWatchdog` | `Jobs.gs` | 밀린 건이 있으면 웹훅을 되살린다. 5분 트리거가 부른다 |
+| `drainPendingUpdates` | `Jobs.gs` | 밀린 메시지를 직접 받아 처리하고 웹훅을 다시 붙인다 |
 | `deleteWebhook` | `Telegram.gs` | 웹훅 해제 |
 
 ### 트리거와 정기 작업

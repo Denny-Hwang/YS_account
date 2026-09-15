@@ -100,16 +100,42 @@ function answerCallbackQuery(callbackQueryId, text) {
  * @return {?Object}
  */
 function setWebhook() {
+  var res = registerWebhook(true);
+  Logger.log(res ? '웹훅 등록 완료(밀린 건 비움)' : '웹훅 등록 실패. Log 탭을 확인하세요.');
+  return res;
+}
+
+/**
+ * 웹훅을 등록한다. 밀린 건을 버릴지 고를 수 있다.
+ * 복구 작업은 이미 처리한 것만 확인(ack)하고 나머지는 남겨야 하므로 false 로 부른다.
+ * @param {boolean} dropPending 밀린 업데이트를 버릴지
+ * @return {?Object}
+ */
+function registerWebhook(dropPending) {
   var base = getSecret('WEBAPP_URL');
   var secret = getSecret('WEBHOOK_SECRET');
   var url = base + (base.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(secret);
-  var res = tg('setWebhook', {
+  return tg('setWebhook', {
     url: url,
     allowed_updates: ['message', 'callback_query'],
-    drop_pending_updates: true
+    drop_pending_updates: dropPending === true
   });
-  Logger.log(res ? '웹훅 등록 완료' : '웹훅 등록 실패. Log 탭을 확인하세요.');
-  return res;
+}
+
+/**
+ * 밀린 업데이트를 가져온다. 웹훅이 걸려 있는 동안에는 쓸 수 없으므로
+ * 반드시 deleteWebhook 뒤에만 부른다.
+ * @param {?number} offset 이 값 이상만 받는다. null 이면 처음부터
+ * @param {number=} limit 한 번에 받을 수, 기본 100
+ * @return {!Array<!Object>}
+ */
+function getUpdates(offset, limit) {
+  var payload = { timeout: 0, limit: limit || 100 };
+  if (offset !== null && offset !== undefined) {
+    payload.offset = offset;
+  }
+  var res = tg('getUpdates', payload);
+  return res && res.result ? res.result : [];
 }
 
 /** 웹훅을 해제한다. */
