@@ -104,8 +104,56 @@ function expectedAmountFor(definition, month, monthIncome) {
 }
 
 /**
+ * 고정 항목의 금액이 미리 확정돼 있는지 본다.
+ *
+ * 렌트·구독료·보험처럼 금액이 정해진 것은 달이 시작될 때 이미 쓴 돈으로 봐야 한다.
+ * 그래야 "아직 안 나갔으니 여유 있다" 는 착시가 생기지 않는다.
+ * 관리비·전기세처럼 고지서를 받아 봐야 아는 것은 확정 전까지 예정으로 둔다.
+ *
+ * Recurring.certainty 열이 비어 있으면 기존 열에서 추론한다.
+ *   - 수입(type=income)은 들어오기 전까지 없는 돈으로 본다 → 변동
+ *   - amount_rule 이 fixed 가 아니면(income_pct, biweekly) 계산 결과가 달마다 달라진다 → 변동
+ *   - tolerance_pct 가 0 이면 금액이 정해진 항목이다 → 확정
+ * @param {!Object} definition Recurring 행
+ * @return {string} 'fixed'(금액 확정) | 'variable'(금액 변동)
+ */
+function recurringCertainty(definition) {
+  var def = definition || {};
+  var explicit = String(def.certainty === null || def.certainty === undefined ? '' : def.certainty)
+    .trim().toLowerCase();
+  if (explicit === 'fixed' || explicit === 'variable') {
+    return explicit;
+  }
+  if (String(def.type || 'expense').trim().toLowerCase() === 'income') {
+    return 'variable';
+  }
+  if (parseAmountRule(def.amount_rule).type !== 'fixed') {
+    return 'variable';
+  }
+  return (Number(def.tolerance_pct) || 0) === 0 ? 'fixed' : 'variable';
+}
+
+/**
+ * 그 달 예약 행을 어떤 상태로 만들지 정한다.
+ *   committed — 금액이 확정돼 예산에서 이미 뺀 것. 실제 결제는 아직이다.
+ *   expected  — 금액을 몰라 아직 예산에 넣지 않은 것.
+ * @param {!Object} definition Recurring 행
+ * @return {string}
+ */
+function initialRecurringStatus(definition) {
+  return recurringCertainty(definition) === 'fixed' ? 'committed' : 'expected';
+}
+
+/** 아직 실제로 집행되지 않은 예약 상태인가. expected 와 committed 둘 다 해당한다. */
+function isReservedStatus(status) {
+  var s = String(status === null || status === undefined ? '' : status).trim();
+  return s === 'expected' || s === 'committed';
+}
+
+/**
  * 고정 항목을 확정할 때 어느 행을 손댈지 정한다.
- * 그 달의 expected 행만 확정 대상이다. 이미 confirmed 인 행은 절대 덮어쓰지 않는다.
+ * 그 달의 예약 행(expected 또는 committed)만 확정 대상이다.
+ * 이미 confirmed 인 행은 절대 덮어쓰지 않는다.
  * 그런 행이 있으면 "이번 달 N번째 결제" 로 새 행을 추가해야 한다.
  * @param {!Array<!Object>} monthRows 그 달 원장 행
  * @param {string} recurringId
@@ -120,7 +168,7 @@ function pickConfirmTarget(monthRows, recurringId) {
       return;
     }
     var status = String(row.status).trim();
-    if (status === 'expected' && !target) {
+    if (isReservedStatus(status) && !target) {
       target = row;
     } else if (status === 'confirmed') {
       confirmedCount++;
@@ -178,7 +226,10 @@ function undoPlan(row, memo, fallbackExpected) {
   var mode = memo && memo.mode ? memo.mode : (status === 'confirmed' && String(row.source) === 'recurring' ? 'confirm' : 'append');
   if (mode === 'confirm') {
     var prev = (memo && memo.previous) || fallbackExpected || {};
-    var patch = { status: 'expected', payer: '' };
+    // 되돌릴 상태는 원래 예약 상태다. 금액 확정 고정비는 committed 로 돌아가야
+    // 예산에서 다시 빠진 채로 남는다.
+    var back = isReservedStatus(prev.status) ? String(prev.status).trim() : 'expected';
+    var patch = { status: back, payer: '' };
     if (prev.amount !== undefined) {
       patch.amount = prev.amount;
     }
@@ -316,6 +367,9 @@ if (typeof module !== 'undefined') {
     biweeklyPaydays: biweeklyPaydays,
     expectedAmountFor: expectedAmountFor,
     pickConfirmTarget: pickConfirmTarget,
+    recurringCertainty: recurringCertainty,
+    initialRecurringStatus: initialRecurringStatus,
+    isReservedStatus: isReservedStatus,
     matchRecurringName: matchRecurringName,
     undoPlan: undoPlan,
     nextMonthBudgets: nextMonthBudgets,

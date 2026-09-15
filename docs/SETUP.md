@@ -147,6 +147,26 @@ Apps Script 편집기 → 우상단 `배포` → `새 배포` → 유형 `웹 �
      한 줄인데 답장이 여러 번이면 회신 쪽 문제다.
   4. `setupSheet` 을 한 번 실행해 `Log` 탭에 `update_id` 열이 있는지 확인한다.
 
+### e. 금액이 정해진 고정비는 미리 빼 둔다
+
+렌트가 아직 안 나갔다고 예산에서 빼지 않으면 달 초에는 늘 여유가 있어 보이고 말일에 갑자기 부족해진다.
+그래서 **금액이 정해진 고정비는 달이 열릴 때 바로 예산에서 뺀다.**
+
+| `Recurring.certainty` | 그 달 예약 행 상태 | 예산 반영 | 보기 |
+|---|---|---|---|
+| `fixed` (렌트·구독료·보험·부채상환·저축) | `committed` | 달이 열릴 때 바로 | 원장에 `확정·선반영` 배지 |
+| `variable` (관리비·전기세·유류비·급여) | `expected` | 실제 금액을 보낼 때 | 원장에 `예정` 배지 |
+
+- 어느 쪽인지는 웹앱 **고정비** 화면에서 항목을 눌러 `금액 확정으로` / `금액 변동으로` 로 바꾼다.
+  시트의 `Recurring.certainty` 열을 직접 고쳐도 된다.
+- `certainty` 를 비워 두면 `tolerance_pct` 가 0 이고 `amount_rule` 이 `fixed` 인 지출을 확정으로 본다.
+- 이미 만들어진 달을 새 기준으로 맞추려면 `Recurring.gs` 의 `resyncReservedStatuses` 를 실행한다.
+- `committed` 행도 실제 금액을 보내면 그 행이 `confirmed` 로 바뀐다. 새 행이 생기지 않으므로 두 번 세지 않는다.
+  `취소` 하면 `committed` 로 돌아가 예산에서는 계속 빠진 채로 남는다.
+
+수입은 반대다. 들어올 예정인 급여는 실제로 받기 전까지 수입 합계에 넣지 않는다.
+더해 놓으면 "이번 달 흑자" 처럼 보이는 반대 방향의 착시가 생긴다.
+
 ---
 
 ## P4 — 시간 트리거 설치
@@ -532,6 +552,7 @@ Apps Script 편집기 왼쪽 파일 목록에서 파일을 고른 뒤, 상단 �
 | `ensureMonthOpened` | `Jobs.gs` | 이번 달이 안 열렸으면 연다(멱등) |
 | `postMonthlyRecurring` | `Recurring.gs` | 이번 달 고정 항목 예정 행 생성 |
 | `recomputeIncomePct` | `Recurring.gs` | 수입 비율 항목 다시 계산 |
+| `resyncReservedStatuses` | `Recurring.gs` | 예약 행을 지금 `certainty` 기준으로 맞춘다(committed ↔ expected) |
 
 ### 화면 다시 그리기
 

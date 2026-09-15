@@ -49,17 +49,21 @@ var VALIDATIONS = {
  * 적은 뒤 applyPersonalDefaults() 로 덮어쓴다.
  * type: expense 고정비 / income 수입원 / transfer 저축(먼저 저축).
  */
+/** 초기 Recurring 시드.
+ *  마지막 열 certainty 는 금액이 미리 정해졌는지다.
+ *  fixed 면 달이 시작될 때 committed 로 잡혀 예산에서 바로 빠지고,
+ *  variable 이면 실제 금액을 보낼 때까지 expected 로 남는다. */
 var RECURRING_SEED = [
-  ['R01', '렌트', 'fixed', '주거비', 1000, 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
-  ['R02', '관리비', 'fixed', '주거비', 100, 'USD', 1, 'fixed', 15, 'Y', '', 'expense'],
-  ['R03', '통신비', 'fixed', '통신비', 50, 'USD', 1, 'fixed', 10, 'Y', '', 'expense'],
-  ['R04', '구독료', 'fixed', '구독', 30, 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
-  ['R05', '유류비', 'fixed', '유류비', 100, 'USD', 1, 'fixed', 30, 'Y', '주유할 때마다 "주유 45" 로 보내면 첫 건은 예정 행을 확정하고 다음 건은 새 행으로 쌓인다', 'expense'],
-  ['R06', '보험', 'fixed', '보험', 100, 'USD', 1, 'fixed', 0, 'Y', '', 'expense'],
-  ['R07', '부채상환', 'fixed', '부채상환', 100, 'USD', 15, 'fixed', 0, 'Y', 'Debts.recurring_id 에 R07 을 적으면 확정할 때 원금이 줄어든다', 'expense'],
-  ['R08', '기부', 'fixed', '기부', 100, 'USD', 26, 'income_pct:10', 0, 'Y', '그 달 수입 합의 10%', 'expense'],
-  ['S01', '저축', 'fixed', '저축', 300, 'USD', 1, 'fixed', 0, 'Y', '먼저 저축. "저축 300" 을 보내면 확정된다', 'transfer'],
-  ['I01', '급여', 'fixed', '급여', 3000, 'USD', 1, 'fixed', 0, 'Y', '"급여 3000" 을 보내면 확정된다', 'income']
+  ['R01', '렌트', 'fixed', '주거비', 1000, 'USD', 1, 'fixed', 0, 'Y', '', 'expense', 'fixed'],
+  ['R02', '관리비', 'fixed', '주거비', 100, 'USD', 1, 'fixed', 15, 'Y', '고지서를 받아야 아는 금액', 'expense', 'variable'],
+  ['R03', '통신비', 'fixed', '통신비', 50, 'USD', 1, 'fixed', 10, 'Y', '', 'expense', 'variable'],
+  ['R04', '구독료', 'fixed', '구독', 30, 'USD', 1, 'fixed', 0, 'Y', '', 'expense', 'fixed'],
+  ['R05', '유류비', 'fixed', '유류비', 100, 'USD', 1, 'fixed', 30, 'Y', '주유할 때마다 "주유 45" 로 보내면 첫 건은 예정 행을 확정하고 다음 건은 새 행으로 쌓인다', 'expense', 'variable'],
+  ['R06', '보험', 'fixed', '보험', 100, 'USD', 1, 'fixed', 0, 'Y', '', 'expense', 'fixed'],
+  ['R07', '부채상환', 'fixed', '부채상환', 100, 'USD', 15, 'fixed', 0, 'Y', 'Debts.recurring_id 에 R07 을 적으면 확정할 때 원금이 줄어든다', 'expense', 'fixed'],
+  ['R08', '기부', 'fixed', '기부', 100, 'USD', 26, 'income_pct:10', 0, 'Y', '그 달 수입 합의 10%', 'expense', 'variable'],
+  ['S01', '저축', 'fixed', '저축', 300, 'USD', 1, 'fixed', 0, 'Y', '먼저 저축. "저축 300" 을 보내면 확정된다', 'transfer', 'fixed'],
+  ['I01', '급여', 'fixed', '급여', 3000, 'USD', 1, 'fixed', 0, 'Y', '들어와야 있는 돈이라 미리 세지 않는다', 'income', 'variable']
 ];
 
 /** 초기 Merchants 사전 시드. keyword, type, kind, category, envelope, recurring_id, hit_count, last_used */

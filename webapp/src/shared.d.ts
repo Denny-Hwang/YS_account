@@ -37,6 +37,10 @@ declare module '@shared/Budget.js' {
   export function roundCents(n: number): number
   export function signalOf(status: { budget: number; remaining: number; deltaVsPlan: number }): Signal
   export function signalGlyph(signal: Signal): string
+  /** 예산에 반영되는 상태인가. active | confirmed | committed */
+  export function isSpentStatus(status: unknown): boolean
+  /** 실제 집행이 끝난 상태인가. active | confirmed */
+  export function isSettledStatus(status: unknown): boolean
 }
 
 declare module '@shared/Parser.js' {
@@ -97,6 +101,11 @@ declare module '@shared/LedgerRules.js' {
     recurringId: string
   ): { target: T | null; confirmedCount: number }
   export function matchRecurringName<T extends Record<string, unknown>>(text: string, definitions: T[]): T | null
+  /** 고정 항목의 금액이 미리 정해졌는지. fixed 면 달이 열릴 때 committed 로 잡힌다. */
+  export function recurringCertainty(definition: Record<string, unknown>): 'fixed' | 'variable'
+  export function initialRecurringStatus(definition: Record<string, unknown>): 'committed' | 'expected'
+  /** 아직 집행 전인 예약 상태인가. expected | committed */
+  export function isReservedStatus(status: unknown): boolean
   export function undoPlan(
     row: Record<string, unknown>,
     memo: { mode?: string; previous?: Record<string, unknown> } | null,

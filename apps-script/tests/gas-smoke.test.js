@@ -244,9 +244,39 @@ test('저축(transfer)은 예정→확정이고 수입·지출 합계에 들어�
   assert.equal(row.type, 'transfer');
   assert.match(lastText(ctx), /✓ 저축 \$300\.00 확정/);
   const totals = ctx.monthTotals('2026-09'); // vm 컨텍스트의 객체라 deepEqual 대신 필드로 비교한다
-  assert.equal(totals.income, 0);
-  assert.equal(totals.expense, 0);
+  assert.equal(totals.income, 0, 'transfer 는 수입이 아니다');
+  // 지출 합에는 금액이 확정된 고정비(렌트 1000 + 구독료 30 + 보험 100 + 부채상환 100)가 미리 들어간다.
+  // 저축 300 은 transfer 라 어느 쪽에도 들어가지 않는다.
+  assert.equal(totals.expense, 1230);
   assert.equal(ctx.savingsPlan('2026-09').actual, 300);
+});
+
+test('금액 확정 고정비는 달이 열릴 때 committed 로 잡혀 예산에 미리 반영된다', () => {
+  const ctx = fresh();
+  const byId = {};
+  rowsOf(ctx, 'Transactions').forEach((r) => { if (r.recurring_id) byId[r.recurring_id] = r; });
+  // 금액이 정해진 것: 렌트·구독료·보험·부채상환·저축
+  ['R01', 'R04', 'R06', 'R07', 'S01'].forEach((id) => {
+    assert.equal(byId[id].status, 'committed', id + ' 은 금액이 정해져 있다');
+  });
+  // 고지서를 받아야 아는 것과 수입: 확정 전까지 예정
+  ['R02', 'R03', 'R05', 'R08', 'I01'].forEach((id) => {
+    assert.equal(byId[id].status, 'expected', id + ' 은 금액이 변한다');
+  });
+  // committed 는 예산에 들어가고 expected 는 들어가지 않는다
+  assert.equal(ctx.monthTotals('2026-09').expense, 1230);
+});
+
+test('committed 고정비도 실제 금액을 보내면 그 행이 확정되고, 취소하면 committed 로 돌아간다', () => {
+  const ctx = fresh();
+  msg(ctx, '렌트 1000');
+  let rows = rowsOf(ctx, 'Transactions').filter((r) => r.recurring_id === 'R01');
+  assert.equal(rows.length, 1, '새 행이 생기면 두 번 세어진다');
+  assert.equal(rows[0].status, 'confirmed');
+  msg(ctx, '취소');
+  rows = rowsOf(ctx, 'Transactions').filter((r) => r.recurring_id === 'R01');
+  assert.equal(rows[0].status, 'committed', '되돌린 뒤에도 예산에서는 빠진 채로 남는다');
+  assert.equal(ctx.monthTotals('2026-09').expense, 1230, '취소해도 합계가 튀지 않는다');
 });
 
 test('아침 요약은 전부 초록이면 한 줄, 아니면 문제 봉투만 길게', () => {
@@ -266,7 +296,9 @@ test('월 마감 점수와 주간 결산이 만들어진다', () => {
   msg(ctx, '급여 3000');
   msg(ctx, '코스트코 400');
   const report = ctx.buildMonthlyCloseReport('2026-09', '2026-09-30', false);
-  assert.match(report, /점수 · 저축률 87% \(지난달 -\) · 예산 안 3\/3 봉투/);
+  // 수입 3000, 지출 400(유동비) + 1230(금액 확정 고정비) = 1630 → 저축률 46%.
+  // 고정비를 미리 세지 않던 때의 87% 는 착시였다.
+  assert.match(report, /점수 · 저축률 46% \(지난달 -\) · 예산 안 3\/3 봉투/);
   ctx.setConfig('weekly_digest_day', String(new Date(new Date('2026-09-13T20:00:00Z').toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })).getDay()));
   const weekly = ctx.weeklyDigest();
   assert.match(weekly, /📈 주간 결산/);
@@ -382,4 +414,27 @@ test('diagnoseWebhook 은 비밀값을 가리고 원인 후보를 찍는다', ()
   assert.ok(!/demo-deploy-id-abcdef/.test(out), '배포 URL 전체가 찍히면 안 된다');
   assert.match(out, /allowed_telegram_ids: 11, 22/);
   assert.match(out, /최근 Log 10줄/);
+});
+
+test('resyncReservedStatuses 는 기존 예약 행을 지금 기준으로 맞춘다', () => {
+  const ctx = fresh();
+  // 이 기능이 생기기 전 시트를 흉내 낸다: 전부 expected
+  rowsOf(ctx, 'Transactions').forEach((r) => {
+    if (r.recurring_id && r.status === 'committed') ctx.updateRowById('Transactions', r.id, { status: 'expected' });
+  });
+  ctx.invalidateReadCache();
+  assert.equal(ctx.monthTotals('2026-09').expense, 0, '보정 전에는 예산에 안 들어간다');
+
+  const moved = ctx.resyncReservedStatuses('2026-09');
+  assert.equal(moved.toCommitted, 5, '렌트·구독료·보험·부채상환·저축');
+  assert.equal(moved.toExpected, 0);
+  ctx.invalidateReadCache();
+  assert.equal(ctx.monthTotals('2026-09').expense, 1230);
+
+  // 금액 확정을 변동으로 바꾸면 되돌아간다
+  ctx.updateRowById('Recurring', 'R01', { certainty: 'variable' });
+  ctx.invalidateReadCache();
+  assert.equal(ctx.resyncReservedStatuses('2026-09').toExpected, 1);
+  ctx.invalidateReadCache();
+  assert.equal(ctx.monthTotals('2026-09').expense, 230);
 });

@@ -18,11 +18,12 @@ var SHEETS = {
   },
   RECURRING: {
     name: 'Recurring',
-    // extendable: 기존 탭에 type 열이 없으면 마지막 열 뒤에 붙인다. 비어 있으면 expense 로 본다.
+    // extendable: 기존 탭에 type·certainty 열이 없으면 마지막 열 뒤에 붙인다.
+    // type 이 비면 expense, certainty 가 비면 다른 열에서 추론한다(LedgerRules.recurringCertainty).
     extendable: true,
     headers: [
       'id', 'name', 'kind', 'category', 'expected_amount', 'currency', 'due_day',
-      'amount_rule', 'tolerance_pct', 'active', 'notes', 'type'
+      'amount_rule', 'tolerance_pct', 'active', 'notes', 'type', 'certainty'
     ]
   },
   BUDGETS: {
@@ -95,7 +96,7 @@ var CONFIG_DEFAULTS = [
 var ENUMS = {
   type: ['income', 'expense', 'transfer'],
   kind: ['fixed', 'variable'],
-  status: ['active', 'expected', 'confirmed', 'deleted'],
+  status: ['active', 'expected', 'committed', 'confirmed', 'deleted'],
   carryover: ['reset', 'carry'],
   horizon: ['short', 'mid', 'long'],
   currency: ['USD', 'KRW'],

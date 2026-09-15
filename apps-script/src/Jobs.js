@@ -34,19 +34,27 @@ function envelopeStatuses(month, transactions, today) {
   });
 }
 
-/** 그 달의 수입·지출 합(USD). active/confirmed 만 센다. transfer 는 어느 쪽도 아니다. */
+/**
+ * 그 달의 수입·지출 합(USD). transfer 는 어느 쪽도 아니다.
+ * 지출은 금액이 확정된 고정비(committed)까지 센다. 미리 빼 둬야 여유가 있어 보이지 않는다.
+ * 수입은 실제로 들어온 것만 센다. 들어올 예정인 돈을 더하면 반대 방향의 착시가 생긴다.
+ */
 function monthTotals(month) {
   var income = 0;
   var expense = 0;
   monthTransactions(month).forEach(function (row) {
     var status = String(row.status).trim();
-    if (status !== 'active' && status !== 'confirmed') {
-      return;
-    }
     var type = String(row.type).trim();
     if (type === 'income') {
-      income += Number(row.amount_usd) || 0;
-    } else if (type === 'expense') {
+      if (isSettledStatus(status)) {
+        income += Number(row.amount_usd) || 0;
+      }
+      return;
+    }
+    if (!isSpentStatus(status)) {
+      return;
+    }
+    if (type === 'expense') {
       expense += Number(row.amount_usd) || 0;
     }
   });
@@ -100,7 +108,7 @@ function dailySummary() {
       return;
     }
     var status = String(row.status).trim();
-    if (status !== 'active' && status !== 'confirmed') {
+    if (!isSpentStatus(status)) {
       return;
     }
     if (toDateStr(row.date) === yesterday) {
@@ -192,7 +200,7 @@ function weeklyDigest() {
         return;
       }
       var status = String(row.status).trim();
-      if (status !== 'active' && status !== 'confirmed') {
+      if (!isSpentStatus(status)) {
         return;
       }
       var d = toDateStr(row.date);

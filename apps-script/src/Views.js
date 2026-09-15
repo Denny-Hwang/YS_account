@@ -100,7 +100,7 @@ function buildMonthlyView() {
   var txMonth = monthPredicate(TX, M);
   var notDeleted = '(' + colRange(TX, 'status') + '<>"deleted")';
   // "실제" 는 active/confirmed 만 센다. expected 는 예정이라 합계에 넣지 않는다(웹앱과 같은 기준).
-  var counted = '((' + colRange(TX, 'status') + '="active")+(' + colRange(TX, 'status') + '="confirmed"))';
+  var counted = '((' + colRange(TX, 'status') + '="active")+(' + colRange(TX, 'status') + '="confirmed")+(' + colRange(TX, 'status') + '="committed"))';
   var amountUsd = colRange(TX, 'amount_usd');
 
   // 월 선택
@@ -168,7 +168,8 @@ function buildMonthlyView() {
     var erow = MV_ROWS.envStart + e;
     var spent = 'SUMPRODUCT(' + txMonth + '*(' + colRange(TX, 'envelope') + '=$A' + erow + ')*(' +
       colRange(TX, 'type') + '="expense")*(' + colRange(TX, 'kind') + '="variable")*((' +
-      colRange(TX, 'status') + '="active")+(' + colRange(TX, 'status') + '="confirmed"))*' +
+      colRange(TX, 'status') + '="active")+(' + colRange(TX, 'status') + '="confirmed")+(' +
+      colRange(TX, 'status') + '="committed"))*' +
       amountUsd + ')';
     envFormulas.push([
       '=IFERROR(INDEX(FILTER(' + colRange(BUD, 'envelope') + ',' +
@@ -259,7 +260,7 @@ function buildDashboard() {
   sheet.clear();
   ensureRows(sheet, 60);
 
-  var counted = '((' + colRange(TX, 'status') + '="active")+(' + colRange(TX, 'status') + '="confirmed"))';
+  var counted = '((' + colRange(TX, 'status') + '="active")+(' + colRange(TX, 'status') + '="confirmed")+(' + colRange(TX, 'status') + '="committed"))';
   var amountUsd = colRange(TX, 'amount_usd');
 
   // 최근 12개월 수입·지출 (active/confirmed 만. expected 는 예정이다)
