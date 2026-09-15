@@ -126,8 +126,18 @@ Apps Script 편집기 → 우상단 `배포` → `새 배포` → 유형 `웹 �
 4. `얼마 남았어` 를 보내면 봉투별 상태가 한 줄씩 온다.
 
 ### 문제가 생기면
-- 봇이 아무 반응이 없다 → `Log` 탭 확인. 비어 있으면 token 불일치이거나 `allowed_telegram_ids` 누락이다.
-- `Config.allowed_telegram_ids` 에 본인 ID 가 콤마로 정확히 들어갔는지 확인한다(공백 무방).
+**먼저 `Telegram.gs` 의 `diagnoseWebhook` 을 실행한다.** 실행 로그에 원인 후보가 한 번에 나온다.
+비밀값은 가려서 찍으므로 결과를 그대로 복사해도 된다.
+
+- **회신이 올 때도 있고 안 올 때도 있다** → `Log` 탭 꼬리를 보고 셋 중 어디인지 가른다.
+  1. `수신` 줄이 있고 회신만 없다 → 회신 쪽 문제다. 같은 줄 근처의 `tg:sendMessage` 오류를 본다.
+  2. `거부:` 줄이 있다 → 그 줄이 사유다. `allowed_telegram_ids` 에 없는 id 면 그 줄에 실제 id 가 찍혀 있으니
+     `Config` 탭에 그대로 넣는다. 두 사람 중 한 명만 회신을 못 받는 전형적인 원인이다.
+  3. 아무 줄도 없다 → 요청이 스크립트에 닿지 않았다. `diagnoseWebhook` 의 `배포 URL 일치`,
+     `token 일치`, `밀린 업데이트`, `마지막 오류` 를 본다. `새 배포` 를 새로 만들었으면 URL 이 바뀌었으므로
+     `WEBAPP_URL` 을 갱신하고 `setWebhook` 을 다시 실행해야 한다.
+- 배포 설정은 `실행 계정: 나`, `액세스 권한: 모든 사용자` 여야 한다. 주소는 `/dev` 가 아니라 `/exec` 다.
+- `Config.allowed_telegram_ids` 에 두 사람 ID 가 콤마로 정확히 들어갔는지 확인한다(공백 무방).
 - Config 값은 5분 캐시된다. 바꾼 직후라면 잠시 기다리거나 `clearConfigCache` 를 실행한다.
 - **회신이 여러 번 온다** → 순서대로 본다.
   1. 위 "새 버전 배포" 를 했는가. 안 했으면 웹훅은 아직 예전 코드를 돌리고 있다.
@@ -507,6 +517,7 @@ Apps Script 편집기 왼쪽 파일 목록에서 파일을 고른 뒤, 상단 �
 |---|---|---|
 | `setWebhook` | `Telegram.gs` | 웹훅 등록. 웹 앱 배포 후 실행 |
 | `getWebhookInfo` | `Telegram.gs` | 웹훅 상태와 마지막 오류 확인 |
+| `diagnoseWebhook` | `Telegram.gs` | 회신이 안 올 때 원인 후보를 한 번에 진단 |
 | `deleteWebhook` | `Telegram.gs` | 웹훅 해제 |
 
 ### 트리거와 정기 작업

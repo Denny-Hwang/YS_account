@@ -346,3 +346,40 @@ test('이번 달 지난 날짜는 평소대로 오늘 기준 한 줄로 회신�
   assert.equal(rowsOf(ctx, 'Transactions').find((r) => r.merchant === '코스트코').date, '2026-09-06');
   assert.match(lastText(ctx), /^🟢 식료품 오늘 남은 \$/);
 });
+
+test('허용되지 않은 telegram id 는 조용히 버리지 않고 Log 에 id 를 남긴다', () => {
+  const ctx = fresh();
+  msg(ctx, '코스트코 40', 99);
+  assert.equal(rowsOf(ctx, 'Transactions').filter((r) => r.merchant === '코스트코').length, 0,
+    '허용되지 않은 사람의 기록은 남지 않는다');
+  assert.equal(ctx.sent.filter((s) => s.method === 'sendMessage').length, 0, '회신도 가지 않는다');
+  const tail = rowsOf(ctx, 'Log').slice(-1)[0];
+  assert.match(String(tail.result), /거부: Config\.allowed_telegram_ids 에 없는 id \(99\)/);
+  assert.equal(String(tail.telegram_id), '99', '넣어야 할 id 를 그대로 남긴다');
+});
+
+test('token 이 틀리면 한 시간에 한 줄만 Log 에 남긴다', () => {
+  const ctx = fresh();
+  const before = rowsOf(ctx, 'Log').length;
+  const bad = { parameter: { token: 'wrong' }, postData: { contents: JSON.stringify({ update_id: 1, message: { message_id: 1, chat: { id: 1 }, from: { id: 11 }, text: '코스트코 40' } }) } };
+  ctx.doPost(bad);
+  ctx.doPost(bad);
+  const rows = rowsOf(ctx, 'Log');
+  assert.equal(rows.length, before + 1, '반복 호출에도 한 줄만 쌓인다');
+  assert.match(String(rows.slice(-1)[0].result), /token 불일치/);
+  assert.equal(rowsOf(ctx, 'Transactions').filter((r) => r.merchant === '코스트코').length, 0);
+});
+
+test('diagnoseWebhook 은 비밀값을 가리고 원인 후보를 찍는다', () => {
+  const ctx = fresh();
+  const printed = [];
+  ctx.Logger.log = (s) => printed.push(String(s));
+  ctx.PropertiesService.getScriptProperties().setProperty('WEBAPP_URL',
+    'https://script.google.com/macros/s/demo-deploy-id-abcdef/exec');
+  ctx.diagnoseWebhook();
+  const out = printed.join('\n');
+  assert.ok(!/secret/.test(out), 'WEBHOOK_SECRET 값이 그대로 찍히면 안 된다');
+  assert.ok(!/demo-deploy-id-abcdef/.test(out), '배포 URL 전체가 찍히면 안 된다');
+  assert.match(out, /allowed_telegram_ids: 11, 22/);
+  assert.match(out, /최근 Log 10줄/);
+});

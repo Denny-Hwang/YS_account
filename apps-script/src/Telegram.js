@@ -131,6 +131,110 @@ function getWebhookInfo() {
   return res;
 }
 
+/** 없으면 throw 하지 않고 null 을 주는 Script Property 조회. 진단 전용. */
+function optionalSecret(key) {
+  try {
+    return getSecret(key);
+  } catch (err) {
+    return null;
+  }
+}
+
+/** 값의 존재만 알리고 내용은 가린다. 진단 결과를 그대로 복사해도 비밀값이 새지 않게 한다. */
+function maskSecret(value) {
+  if (!value) {
+    return '없음 ← Script Properties 에 설정하세요';
+  }
+  return '설정됨 (' + String(value).length + '자, 끝 4자리 …' + String(value).slice(-4) + ')';
+}
+
+/**
+ * 웹훅이 동작하지 않을 때 원인을 한 번에 좁히는 진단.
+ * 실행 로그에 결과를 찍는다. 비밀값은 가려서 출력하므로 결과를 그대로 복사해도 된다.
+ *
+ * 읽는 법:
+ *   - `pending_update_count` 가 계속 0 이 아니면 Telegram 이 배달에 실패하고 있다.
+ *   - `last_error_message` 가 있으면 그 문장이 원인이다.
+ *   - 등록된 웹훅 URL 이 지금 배포 URL 과 다르면 예전 배포로 가고 있다. setWebhook 을 다시 실행한다.
+ *   - Log 꼬리에 `거부:` 가 보이면 token 또는 allowed_telegram_ids 문제다.
+ *   - Log 꼬리에 아무 흔적이 없으면 요청 자체가 이 스크립트에 닿지 않은 것이다.
+ *
+ * @return {?Object} getWebhookInfo 응답
+ */
+function diagnoseWebhook() {
+  var lines = ['── 웹훅 진단 ──'];
+
+  var botToken = optionalSecret('BOT_TOKEN');
+  var secret = optionalSecret('WEBHOOK_SECRET');
+  var webappUrl = optionalSecret('WEBAPP_URL');
+  lines.push('BOT_TOKEN: ' + maskSecret(botToken));
+  lines.push('WEBHOOK_SECRET: ' + maskSecret(secret));
+
+  if (!webappUrl) {
+    lines.push('WEBAPP_URL: 없음 ← 배포 URL 을 Script Properties 에 넣으세요');
+  } else {
+    lines.push('WEBAPP_URL: ' + summarizeExecUrl(webappUrl));
+    if (!/\/exec$/.test(String(webappUrl).split('?')[0])) {
+      lines.push('  ⚠ /exec 로 끝나지 않습니다. /dev 주소는 본인만 열 수 있어 웹훅으로 쓸 수 없습니다.');
+    }
+  }
+
+  var me = tg('getMe');
+  lines.push('getMe: ' + (me ? '@' + me.result.username : '실패 ← BOT_TOKEN 을 확인하세요'));
+
+  var info = tg('getWebhookInfo');
+  if (!info) {
+    lines.push('getWebhookInfo: 실패 ← BOT_TOKEN 을 확인하세요');
+  } else {
+    var r = info.result || {};
+    lines.push('등록된 웹훅: ' + (r.url ? summarizeExecUrl(r.url) : '없음 ← setWebhook 을 실행하세요'));
+    lines.push('밀린 업데이트: ' + (r.pending_update_count || 0) + '건');
+    lines.push('마지막 오류: ' + (r.last_error_message || '없음') +
+      (r.last_error_date ? ' (' + new Date(r.last_error_date * 1000).toISOString() + ')' : ''));
+    if (r.url && webappUrl) {
+      var sameBase = r.url.split('?')[0] === String(webappUrl).split('?')[0];
+      lines.push('배포 URL 일치: ' + (sameBase ? '예' : '아니오 ← setWebhook 을 다시 실행하세요'));
+    }
+    if (r.url && secret) {
+      var m = /[?&]token=([^&]*)/.exec(r.url);
+      var sentToken = m ? decodeURIComponent(m[1]) : '';
+      lines.push('token 일치: ' + (sentToken === secret ? '예' : '아니오 ← setWebhook 을 다시 실행하세요'));
+    }
+  }
+
+  lines.push('allowed_telegram_ids: ' + (getConfigList('allowed_telegram_ids').join(', ') || '비어 있음 ← Config 탭을 채우세요'));
+  lines.push('최근 Log 10줄:');
+  lines.push(recentLogTail(10));
+  lines.push('────────────');
+
+  Logger.log(lines.join('\n'));
+  return info;
+}
+
+/** 배포 URL 을 식별만 되게 줄인다. 전체 URL 은 비밀값이므로 찍지 않는다. */
+function summarizeExecUrl(url) {
+  var base = String(url).split('?')[0];
+  var m = /\/macros\/s\/([^/]+)\//.exec(base);
+  var tail = m ? '…' + m[1].slice(-6) : '…' + base.slice(-6);
+  return '/macros/s/' + tail + '/' + base.split('/').pop() + (url.indexOf('token=') >= 0 ? ' (+token)' : ' (token 없음)');
+}
+
+/** Log 탭 마지막 N 줄을 진단용 한 덩어리 문자열로 만든다. */
+function recentLogTail(limit) {
+  try {
+    var rows = readAll(SHEETS.LOG.name);
+    if (!rows.length) {
+      return '  (비어 있음) ← 요청이 이 스크립트에 닿지 않고 있습니다';
+    }
+    return rows.slice(-Math.max(1, limit || 10)).map(function (row) {
+      return '  ' + String(row.timestamp) + ' | ' + String(row.telegram_id) +
+        ' | ' + String(row.raw_text).slice(0, 30) + ' | ' + String(row.result).slice(0, 60);
+    }).join('\n');
+  } catch (err) {
+    return '  Log 읽기 실패: ' + err;
+  }
+}
+
 /**
  * 선택지 키보드. callback_data 는 라벨이 아니라 `prefix|key|index` 다.
  * Telegram 의 callback_data 는 64바이트가 한도라 한글 라벨을 그대로 넣으면 넘칠 수 있다.

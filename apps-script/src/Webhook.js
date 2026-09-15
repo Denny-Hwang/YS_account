@@ -41,6 +41,9 @@ function doPost(e) {
     // 첫 번째 검사: URL 파라미터의 token 이 WEBHOOK_SECRET 과 같아야 한다.
     // Apps Script 는 요청 헤더를 읽을 수 없으므로 secret 을 URL 로만 검증한다.
     if (!e || !e.parameter || e.parameter.token !== getSecret('WEBHOOK_SECRET')) {
+      // 조용히 버리면 "왜 회신이 없지" 를 진단할 수 없다. 다만 배포 URL 은 외부에서도
+      // 두드릴 수 있으므로 한 시간에 한 줄만 남긴다.
+      noteRejectionOnce('token', 'token 불일치 또는 없음. setWebhook 을 다시 실행하세요.');
       return ContentService.createTextOutput('ok');
     }
 
@@ -57,6 +60,7 @@ function doPost(e) {
     var message = update.message;
     var callback = update.callback_query;
     if (!message && !callback) {
+      logEvent('', '[무시]', '', 'message 도 callback 도 아닌 update', updateId);
       return ContentService.createTextOutput('ok');
     }
 
@@ -64,6 +68,10 @@ function doPost(e) {
     var userId = from && from.id;
     var allowed = getConfigList('allowed_telegram_ids');
     if (!userId || allowed.indexOf(String(userId)) < 0) {
+      // 여기까지 왔다는 것은 token 은 맞았다는 뜻이다. Config.allowed_telegram_ids 에
+      // 넣을 실제 id 를 Log 에 남겨 두면 오타를 바로 찾을 수 있다.
+      logEvent(userId, message ? (message.text || '[사진]') : 'callback:' + callback.data, '',
+        '거부: Config.allowed_telegram_ids 에 없는 id (' + userId + ')', updateId);
       return ContentService.createTextOutput('ok');
     }
 
@@ -131,6 +139,26 @@ function claimUpdate(updateId) {
 
   var recentLogIds = recentLogUpdateIds(RECENT_LOG_LOOKBACK);
   return !isDuplicateUpdate(updateId, false, recentLogIds);
+}
+
+/**
+ * 요청을 거부한 사실을 Log 탭에 남긴다. 같은 사유는 한 시간에 한 번만 남긴다.
+ * 배포 URL 은 누구나 두드릴 수 있어 매번 남기면 Log 탭이 잡음으로 찬다.
+ * @param {string} reasonKey 사유 구분자
+ * @param {string} message Log 의 result 에 적을 설명
+ */
+function noteRejectionOnce(reasonKey, message) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var key = 'reject_' + reasonKey;
+    if (cache.get(key) !== null) {
+      return;
+    }
+    cache.put(key, '1', 3600);
+    logEvent('', '[거부]', '', '거부: ' + message);
+  } catch (err) {
+    Logger.log('거부 기록 실패: ' + err);
+  }
 }
 
 /**
