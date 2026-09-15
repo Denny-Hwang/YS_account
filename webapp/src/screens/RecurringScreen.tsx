@@ -1,12 +1,19 @@
 import { useState } from 'react'
 import { formatUsd } from '@shared/Budget.js'
+import { recurringCertainty } from '@shared/LedgerRules.js'
 import { Bullet, RankBars, Stat } from '../components/Charts'
 import { Card, Empty, Notice } from '../components/Ui'
 import { TABS, availableMonths, patchIn, type SheetRow, type Workbook } from '../lib/ledger'
 import { recurringActuals } from '../lib/metrics'
 import type { SheetsContext } from '../lib/sheets'
 
-const STATUS_LABEL: Record<string, string> = { expected: '예정', confirmed: '확정', active: '기록됨', deleted: '삭제됨' }
+const STATUS_LABEL: Record<string, string> = {
+  expected: '예정',
+  committed: '확정·선반영',
+  confirmed: '집행',
+  active: '기록됨',
+  deleted: '삭제됨',
+}
 
 export function RecurringScreen({ workbook, ctx, today, onChanged }: { workbook: Workbook; ctx: SheetsContext; today: string; onChanged: () => void }) {
   const months = availableMonths(workbook, today)
@@ -21,7 +28,11 @@ export function RecurringScreen({ workbook, ctx, today, onChanged }: { workbook:
   const active = items.filter((i) => String(i.row.active).trim().toUpperCase() === 'Y')
   const expectedTotal = active.reduce((a, i) => a + i.expectedUsd, 0)
   const confirmedTotal = active.reduce((a, i) => a + i.actualUsd, 0)
+  // 아직 실제 금액이 들어오지 않은 항목. committed 는 예산에는 이미 들어가 있지만 집행 전이다.
   const pendingCount = active.filter((i) => i.status !== 'confirmed' && i.status !== 'active').length
+  const committedTotal = active
+    .filter((i) => recurringCertainty(i.row) === 'fixed')
+    .reduce((a, i) => a + i.expectedUsd, 0)
 
   const byCategory = new Map<string, number>()
   active.forEach((i) => byCategory.set(i.category || '(분류 없음)', (byCategory.get(i.category || '(분류 없음)') ?? 0) + i.expectedUsd))
@@ -56,11 +67,15 @@ export function RecurringScreen({ workbook, ctx, today, onChanged }: { workbook:
         </div>
         <div className="stat-row" style={{ marginTop: 14 }}>
           <Stat label="이달 고정비 예상" value={formatUsd(expectedTotal)} size="md" />
-          <Stat label="확정된 금액" value={formatUsd(confirmedTotal)} size="md" />
+          <Stat label="집행된 금액" value={formatUsd(confirmedTotal)} size="md" />
         </div>
         <div style={{ marginTop: 10 }}>
-          <Bullet label="확정 진행" value={confirmedTotal} target={expectedTotal} />
+          <Bullet label="집행 진행" value={confirmedTotal} target={expectedTotal} />
         </div>
+        <p className="meta" style={{ marginTop: 8 }}>
+          이 중 금액이 정해진 {formatUsd(committedTotal)} 는 달이 시작될 때 이미 예산에서 빠집니다.
+          나머지는 실제 금액을 보낼 때 빠집니다.
+        </p>
       </Card>
 
       <Card title="항목별 예상 대비 실제">
@@ -93,6 +108,7 @@ export function RecurringScreen({ workbook, ctx, today, onChanged }: { workbook:
                         </span>
                       )}
                       {String(i.row.amount_rule).startsWith('income_pct:') && ` · 수입의 ${String(i.row.amount_rule).split(':')[1]}%`}
+                      {recurringCertainty(i.row) === 'fixed' ? ' · 금액 확정(예산 선반영)' : ' · 금액 변동'}
                     </>
                   }
                   onClick={() => setEditing(open ? null : i.id)}
@@ -110,6 +126,24 @@ export function RecurringScreen({ workbook, ctx, today, onChanged }: { workbook:
                       {isActive ? '중지' : '사용'}
                     </button>
                   </div>
+                )}
+                {open && (
+                  <p className="meta" style={{ margin: '0 0 12px' }}>
+                    <button
+                      className="ghost"
+                      style={{ padding: '2px 10px', marginRight: 8 }}
+                      disabled={busy}
+                      onClick={() =>
+                        void save(i.row, {
+                          certainty: recurringCertainty(i.row) === 'fixed' ? 'variable' : 'fixed',
+                        })
+                      }
+                    >
+                      {recurringCertainty(i.row) === 'fixed' ? '금액 변동으로' : '금액 확정으로'}
+                    </button>
+                    금액 확정으로 두면 다음 달부터 달이 열릴 때 예산에서 미리 빠집니다.
+                    렌트·구독료처럼 액수가 정해진 것만 확정으로 두세요.
+                  </p>
                 )}
               </div>
             )

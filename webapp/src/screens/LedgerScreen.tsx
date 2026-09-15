@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { formatUsd } from '@shared/Budget.js'
+import { MonthCalendar, MonthSummary } from '../components/Calendar'
 import { Card, Empty, Field, Notice, Sheet } from '../components/Ui'
 import {
   availableMonths,
@@ -7,10 +8,22 @@ import {
   monthTransactions,
   patchTransaction,
   softDeleteTransaction,
+  statusBadge,
   type SheetRow,
   type Workbook,
 } from '../lib/ledger'
 import type { SheetsContext } from '../lib/sheets'
+
+const VIEW_KEY = 'family-budget.ledger-view.v1'
+
+/** 마지막으로 고른 보기 방식. 저장이 막혀 있어도(프라이빗 모드) 목록으로 연다. */
+function readView(): 'list' | 'calendar' {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'calendar' ? 'calendar' : 'list'
+  } catch {
+    return 'list'
+  }
+}
 
 const TYPES = ['expense', 'income', 'transfer']
 const KINDS = ['variable', 'fixed']
@@ -28,40 +41,61 @@ export function LedgerScreen({
 }) {
   const months = availableMonths(workbook, today)
   const [month, setMonth] = useState(months[0] ?? today.slice(0, 7))
+  const [view, setView] = useState<'list' | 'calendar'>(() => readView())
+  const [day, setDay] = useState<string | null>(null)
   const [showDeleted, setShowDeleted] = useState(false)
   const [editing, setEditing] = useState<SheetRow | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const rows = useMemo(() => {
-    const all = monthTransactions(workbook, month)
-    const visible = showDeleted ? all : all.filter((r) => String(r.status) !== 'deleted')
-    return visible.sort((a, b) => String(b.date).localeCompare(String(a.date)) || b._row - a._row)
-  }, [workbook, month, showDeleted])
+  const monthRows = useMemo(() => monthTransactions(workbook, month), [workbook, month])
 
-  const totals = rows.reduce(
-    (acc, row) => {
-      if (String(row.status) === 'deleted') return acc
-      const usd = Number(row.amount_usd) || 0
-      if (String(row.type) === 'income') acc.income += usd
-      else if (String(row.type) === 'expense') acc.expense += usd
-      return acc
-    },
-    { income: 0, expense: 0 }
-  )
+  const rows = useMemo(() => {
+    const visible = showDeleted ? monthRows : monthRows.filter((r) => String(r.status) !== 'deleted')
+    const picked = day ? visible.filter((r) => String(r.date).slice(0, 10) === day) : visible
+    return picked.sort((a, b) => String(b.date).localeCompare(String(a.date)) || b._row - a._row)
+  }, [monthRows, showDeleted, day])
+
+  function switchView(next: 'list' | 'calendar') {
+    setView(next)
+    if (next === 'list') setDay(null)
+    try {
+      localStorage.setItem(VIEW_KEY, next)
+    } catch {
+      // 사파리 프라이빗 모드 등. 보기 방식은 못 기억해도 화면은 돌아간다
+    }
+  }
 
   return (
     <>
       {error && <Notice kind="error">{error}</Notice>}
 
       <Card>
-        <div className="row">
-          <select value={month} onChange={(e) => setMonth(e.target.value)} style={{ maxWidth: 160 }}>
+        <div className="row controls">
+          <select value={month} onChange={(e) => { setMonth(e.target.value); setDay(null) }} style={{ maxWidth: 130 }}>
             {months.map((m) => (
               <option key={m} value={m}>
                 {m}
               </option>
             ))}
           </select>
+          <div className="seg" role="group" aria-label="보기 방식">
+            <button
+              type="button"
+              className={view === 'list' ? 'on' : undefined}
+              aria-pressed={view === 'list'}
+              onClick={() => switchView('list')}
+            >
+              목록
+            </button>
+            <button
+              type="button"
+              className={view === 'calendar' ? 'on' : undefined}
+              aria-pressed={view === 'calendar'}
+              onClick={() => switchView('calendar')}
+            >
+              달력
+            </button>
+          </div>
           <label className="meta" style={{ margin: 0, display: 'flex', gap: 6, alignItems: 'center' }}>
             <input
               type="checkbox"
@@ -72,20 +106,23 @@ export function LedgerScreen({
             삭제 포함
           </label>
         </div>
-        <div className="row" style={{ marginTop: 12 }}>
-          <span className="meta">수입 {formatUsd(totals.income)}</span>
-          <span className="meta">지출 {formatUsd(totals.expense)}</span>
-          <span>순 {formatUsd(totals.income - totals.expense)}</span>
-        </div>
+        <MonthSummary rows={monthRows} month={month} />
       </Card>
 
-      <Card title={`${rows.length}건`}>
+      {view === 'calendar' && (
+        <Card>
+          <MonthCalendar month={month} rows={monthRows} today={today} selected={day} onSelect={setDay} />
+        </Card>
+      )}
+
+      <Card title={day ? `${day} · ${rows.length}건` : `${rows.length}건`}>
         {rows.length === 0 ? (
-          <Empty>이 달에 기록이 없습니다.</Empty>
+          <Empty>{day ? '이 날짜에 기록이 없습니다.' : '이 달에 기록이 없습니다.'}</Empty>
         ) : (
           rows.map((row) => {
             const deleted = String(row.status) === 'deleted'
             const income = String(row.type) === 'income'
+            const badge = statusBadge(row)
             return (
               <div
                 className={`tx${deleted ? ' deleted' : ''}`}
@@ -102,8 +139,9 @@ export function LedgerScreen({
                   {String(row.merchant) || '(이름 없음)'}
                   <br />
                   <span className="pill">{String(row.envelope || row.category || row.kind)}</span>
+                  {badge && <span className={`pill pill-${badge.tone}`}>{badge.label}</span>}
                 </span>
-                <span className={`amount${income ? ' income' : ''}`}>
+                <span className={`amount${income ? ' income' : ''}${badge && badge.tone !== 'deleted' ? ' pending' : ''}`}>
                   {income ? '+' : ''}
                   {formatUsd(Number(row.amount_usd) || 0)}
                 </span>

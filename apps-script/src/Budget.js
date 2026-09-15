@@ -3,8 +3,25 @@
  * Google 서비스에 의존하지 않는다.
  */
 
-/** 유동비 지출로 세는 원장 상태. */
-var SPENT_STATUSES = ['active', 'confirmed'];
+/**
+ * 예산에서 이미 빠진 것으로 세는 원장 상태.
+ *   active    — 실제 집행된 유동비
+ *   confirmed — 실제 집행된 고정 항목
+ *   committed — 금액이 확정돼 있어 미리 빼 두는 고정 항목(렌트·구독료 등). 결제는 아직이다
+ * expected 는 금액을 모르는 예약이라 세지 않는다.
+ */
+var SPENT_STATUSES = ['active', 'confirmed', 'committed'];
+
+/** 원장 상태가 예산에 반영되는지 본다. */
+function isSpentStatus(status) {
+  return SPENT_STATUSES.indexOf(String(status === null || status === undefined ? '' : status).trim()) >= 0;
+}
+
+/** 실제 집행이 끝난 상태인가. committed 는 예산에는 들어가지만 아직 집행 전이다. */
+function isSettledStatus(status) {
+  var s = String(status === null || status === undefined ? '' : status).trim();
+  return s === 'active' || s === 'confirmed';
+}
 
 /** 신호등 기준. 계획 대비 차이가 예산의 이 비율보다 나쁘면 빨강이다. */
 var SIGNAL_RED_RATIO = 0.10;
@@ -56,7 +73,7 @@ function isVariableExpense(tx, envelope, month) {
   if (String(tx.kind).trim() !== 'variable') {
     return false;
   }
-  if (SPENT_STATUSES.indexOf(String(tx.status).trim()) < 0) {
+  if (!isSpentStatus(tx.status)) {
     return false;
   }
   if (String(tx.envelope).trim() !== String(envelope).trim()) {
@@ -198,6 +215,8 @@ function formatStatusShort(status, envelopeName) {
 if (typeof module !== 'undefined') {
   module.exports = {
     daysInMonth: daysInMonth,
+    isSpentStatus: isSpentStatus,
+    isSettledStatus: isSettledStatus,
     remainingDaysInclToday: remainingDaysInclToday,
     envelopeStatus: envelopeStatus,
     formatStatusLine: formatStatusLine,

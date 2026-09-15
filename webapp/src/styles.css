@@ -273,3 +273,61 @@ svg.line .grid { stroke: var(--grid); stroke-width: 1; vector-effect: non-scalin
 
 .tabbar button { padding: 8px 8px; font-size: 12px; }
 @media (min-width: 420px) { .tabbar button { padding: 8px 12px; font-size: 13px; } }
+
+/* ── 원장 보기 전환과 상태 배지 ───────────────────────────── */
+/* 좁은 화면에서 줄바꿈을 허용하는 제어 줄. 글자가 세로로 쪼개지지 않게 한다 */
+.row.controls { flex-wrap: wrap; row-gap: 8px; }
+.row.controls > * { white-space: nowrap; }
+
+.seg { display: inline-flex; flex: none; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.seg button {
+  width: auto; flex: none; margin: 0; padding: 5px 14px; border: none; border-radius: 0;
+  background: var(--surface); color: var(--muted); font-size: 13px; white-space: nowrap; cursor: pointer;
+}
+.seg button.on { background: var(--accent); color: var(--surface); font-weight: 600; }
+
+.pill-committed { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.pill-reserved { background: transparent; color: var(--muted); border: 1px dashed var(--border); }
+.pill-deleted { background: transparent; color: var(--bad); border: 1px solid var(--border); }
+.tx .pill + .pill { margin-left: 4px; }
+/* 아직 안 나간 돈은 흐리게. 실제로 나간 돈과 한눈에 구분된다 */
+.tx .amount.pending { opacity: 0.6; font-weight: 500; }
+
+/* ── 달력 뷰 ──────────────────────────────────────────────── */
+.cal { --cal-gap: 3px; }
+.cal-head, .cal-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--cal-gap); }
+.cal-head { margin-bottom: 4px; }
+.cal-head span { text-align: center; font-size: 11px; color: var(--muted); }
+.cal-head .sun, .cal-num.sun { color: var(--bad); }
+.cal-week { margin-bottom: var(--cal-gap); }
+
+.cal-day {
+  width: auto; margin: 0; padding: 3px 2px 4px; min-height: 58px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 1px;
+  background: var(--surface-2); border: 1px solid transparent; border-radius: 8px;
+  cursor: pointer; text-align: right; font-variant-numeric: tabular-nums; overflow: hidden;
+}
+.cal-day.empty { background: transparent; cursor: default; }
+.cal-day.quiet { background: transparent; border-color: var(--border); }
+.cal-day.today { border-color: var(--accent); }
+.cal-day.selected { background: var(--accent-soft); border-color: var(--accent); }
+
+.cal-num { font-size: 11px; color: var(--muted); line-height: 1.2; }
+.cal-day.today .cal-num { color: var(--accent); font-weight: 700; }
+.cal-in, .cal-out, .cal-committed, .cal-expected, .cal-in-expected {
+  font-size: 10px; line-height: 1.25; white-space: nowrap;
+}
+.cal-in { color: var(--good); font-weight: 600; }
+.cal-out { color: var(--text); font-weight: 600; }
+/* 아직 안 나갔지만 예산에서 이미 뺀 돈 */
+.cal-committed { color: var(--accent); }
+/* 금액이 정해지지 않은 예정 */
+.cal-expected { color: var(--muted); border-bottom: 1px dashed var(--border); }
+.cal-in-expected { color: var(--good); opacity: 0.6; }
+
+.cal-legend { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 8px; }
+
+@media (max-width: 380px) {
+  .cal-day { min-height: 52px; padding: 2px 1px 3px; }
+  .cal-in, .cal-out, .cal-committed, .cal-expected, .cal-in-expected { font-size: 9px; }
+}

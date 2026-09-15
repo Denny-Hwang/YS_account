@@ -98,3 +98,49 @@ test('LedgerRules.js 의 2주급 규칙을 웹앱에서도 같은 값으로 읽�
   assert.equal(rules.expectedAmountFor(salary, '2026-01', 0), 7800)
   assert.equal(rules.expectedAmountFor(salary, '2026-02', 0), 5200)
 })
+
+test('금액 확정 고정비는 committed 로 잡히고 예산에 반영된다', async () => {
+  const rules = await loadShared('LedgerRules.js')
+  const budget = await loadShared('Budget.js')
+
+  // 금액이 정해진 것: tolerance 0, amount_rule=fixed, 지출
+  const rent = { type: 'expense', amount_rule: 'fixed', tolerance_pct: 0 }
+  assert.equal(rules.recurringCertainty(rent), 'fixed')
+  assert.equal(rules.initialRecurringStatus(rent), 'committed')
+
+  // 고지서를 받아야 아는 것
+  const utility = { type: 'expense', amount_rule: 'fixed', tolerance_pct: 15 }
+  assert.equal(rules.recurringCertainty(utility), 'variable')
+  assert.equal(rules.initialRecurringStatus(utility), 'expected')
+
+  // 수입과 계산식 항목은 들어와 봐야 안다
+  assert.equal(rules.recurringCertainty({ type: 'income', amount_rule: 'fixed', tolerance_pct: 0 }), 'variable')
+  assert.equal(rules.recurringCertainty({ type: 'expense', amount_rule: 'income_pct:10', tolerance_pct: 0 }), 'variable')
+
+  // certainty 열을 직접 적으면 그 값이 이긴다
+  assert.equal(rules.recurringCertainty({ ...utility, certainty: 'fixed' }), 'fixed')
+  assert.equal(rules.recurringCertainty({ ...rent, certainty: 'variable' }), 'variable')
+
+  // committed 는 예산에 들어가고 expected 는 들어가지 않는다
+  assert.equal(budget.isSpentStatus('committed'), true)
+  assert.equal(budget.isSpentStatus('expected'), false)
+  assert.equal(budget.isSettledStatus('committed'), false)
+  assert.equal(rules.isReservedStatus('committed'), true)
+  assert.equal(rules.isReservedStatus('confirmed'), false)
+})
+
+test('committed 예약 행도 확정 대상이고 되돌리면 committed 로 돌아간다', async () => {
+  const rules = await loadShared('LedgerRules.js')
+  const pick = rules.pickConfirmTarget(
+    [{ id: 'a', recurring_id: 'R01', status: 'committed' }],
+    'R01'
+  )
+  assert.equal(pick.target.id, 'a')
+  const plan = rules.undoPlan(
+    { id: 'a', status: 'confirmed', source: 'recurring' },
+    { mode: 'confirm', previous: { amount: 1000, status: 'committed' } },
+    null
+  )
+  assert.equal(plan.action, 'revert')
+  assert.equal(plan.patch.status, 'committed')
+})

@@ -3,7 +3,8 @@
  * 열 순서는 항상 시트의 헤더 행을 따른다. 코드에 열 번호를 박지 않는다.
  */
 
-import { pickConfirmTarget } from '@shared/LedgerRules.js'
+import { isSpentStatus, isSettledStatus } from '@shared/Budget.js'
+import { isReservedStatus, pickConfirmTarget } from '@shared/LedgerRules.js'
 import type { ParsedMessage } from '@shared/Parser.js'
 import { appendValues, readTabs, updateCells, type SheetsContext, type Table } from './sheets'
 
@@ -226,10 +227,32 @@ export function availableMonths(workbook: Workbook, today: string): string[] {
   return Array.from(set).sort().reverse()
 }
 
-/** "실제" 로 세는 상태. expected 는 예정이라 빼고, deleted 는 없는 것이다. */
+/**
+ * 예산에 반영되는 상태인가. 봇·시트와 같은 기준을 쓰려고 공유 모듈을 그대로 호출한다.
+ * committed(금액이 확정된 고정비)는 결제 전이라도 이미 쓴 돈으로 센다.
+ * expected(금액 미정)와 deleted 는 빠진다.
+ */
 export function isCounted(row: SheetRow): boolean {
+  return isSpentStatus(row.status)
+}
+
+/** 실제로 집행이 끝났는가. committed 는 예산에는 들어가지만 아직 결제 전이다. */
+export function isSettled(row: SheetRow): boolean {
+  return isSettledStatus(row.status)
+}
+
+/** 아직 집행 전인 예약 행인가. expected(금액 미정) 또는 committed(금액 확정). */
+export function isReserved(row: SheetRow): boolean {
+  return isReservedStatus(row.status)
+}
+
+/** 화면에 보여 줄 상태 배지. 집행된 행은 배지가 없다(null). */
+export function statusBadge(row: SheetRow): { label: string; tone: 'reserved' | 'committed' | 'deleted' } | null {
   const s = String(row.status).trim()
-  return s === 'active' || s === 'confirmed'
+  if (s === 'deleted') return { label: '삭제', tone: 'deleted' }
+  if (s === 'committed') return { label: '확정·선반영', tone: 'committed' }
+  if (s === 'expected') return { label: '예정', tone: 'reserved' }
+  return null
 }
 
 /** Recurring 정의의 유형. type 열이 비어 있으면 expense(이전 시트와 호환). */

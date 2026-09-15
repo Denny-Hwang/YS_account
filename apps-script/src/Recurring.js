@@ -17,7 +17,7 @@ function recurringDateFor(month, dueDay) {
   return month + '-' + (day < 10 ? '0' + day : String(day));
 }
 
-/** 그 달 수입 합계(USD). status 가 active 또는 confirmed 인 income 행만 센다. */
+/** 그 달 수입 합계(USD). 실제로 들어온 income 행만 센다(예약 행은 제외). */
 function monthIncomeTotal(month) {
   var total = 0;
   monthTransactions(month).forEach(function (row) {
@@ -25,7 +25,7 @@ function monthIncomeTotal(month) {
     if (String(row.type).trim() !== 'income') {
       return;
     }
-    if (status !== 'active' && status !== 'confirmed') {
+    if (!isSettledStatus(status)) {
       return;
     }
     total += Number(row.amount_usd) || 0;
@@ -120,7 +120,7 @@ function savingsPlan(month) {
     var done = 0;
     rows.forEach(function (row) {
       var status = String(row.status).trim();
-      if (String(row.recurring_id || '').trim() === id && (status === 'confirmed' || status === 'active')) {
+      if (String(row.recurring_id || '').trim() === id && isSettledStatus(status)) {
         done += Number(row.amount_usd) || 0;
       }
     });
@@ -144,7 +144,7 @@ function postMonthlyRecurring(yyyyMm) {
   monthTransactions(month).forEach(function (row) {
     var id = String(row.recurring_id || '').trim();
     var status = String(row.status).trim();
-    if (id && (status === 'expected' || status === 'confirmed')) {
+    if (id && (isReservedStatus(status) || status === 'confirmed')) {
       posted[id] = true;
     }
   });
@@ -173,7 +173,7 @@ function postMonthlyRecurring(yyyyMm) {
       currency: currency,
       amount_usd: toUsd(amount, currency),
       recurring_id: id,
-      status: 'expected',
+      status: initialRecurringStatus(definition),
       memo: '',
       payer: '',
       source: 'recurring',
@@ -184,6 +184,44 @@ function postMonthlyRecurring(yyyyMm) {
     added++;
   });
   return added;
+}
+
+/**
+ * 이미 만들어진 예약 행의 상태를 지금 기준으로 다시 맞춘다.
+ *
+ * Recurring.certainty 를 바꿨거나, 이 기능이 생기기 전에 만들어진 달을 손볼 때 쓴다.
+ * 확정된(confirmed) 행과 실제 기록(active)은 건드리지 않는다.
+ * @param {string=} yyyyMm 생략하면 이번 달
+ * @return {{toCommitted: number, toExpected: number}}
+ */
+function resyncReservedStatuses(yyyyMm) {
+  var month = yyyyMm || currentMonthStr();
+  var defs = {};
+  readAllCached(SHEETS.RECURRING.name).forEach(function (row) {
+    defs[String(row.id).trim()] = row;
+  });
+
+  var toCommitted = 0;
+  var toExpected = 0;
+  monthTransactions(month).forEach(function (row) {
+    var id = String(row.recurring_id || '').trim();
+    var current = String(row.status).trim();
+    if (!id || !defs[id] || !isReservedStatus(current)) {
+      return;
+    }
+    var wanted = initialRecurringStatus(defs[id]);
+    if (wanted === current) {
+      return;
+    }
+    updateRowById(SHEETS.TRANSACTIONS.name, row.id, { status: wanted, updated_by: 'system' });
+    if (wanted === 'committed') {
+      toCommitted++;
+    } else {
+      toExpected++;
+    }
+  });
+  Logger.log(month + ' 예약 행 보정: 선반영 ' + toCommitted + '건, 예정 ' + toExpected + '건');
+  return { toCommitted: toCommitted, toExpected: toExpected };
 }
 
 /**
@@ -209,8 +247,8 @@ function recomputeIncomePct(yyyyMm) {
       if (String(row.recurring_id || '').trim() !== id) {
         return;
       }
-      if (String(row.status).trim() !== 'expected') {
-        return;
+      if (!isReservedStatus(row.status)) {
+        return; // 확정된 금액은 덮어쓰지 않는다
       }
       updateRowById(SHEETS.TRANSACTIONS.name, row.id, {
         amount: amount,
@@ -238,7 +276,7 @@ function unconfirmedRecurring(yyyyMm) {
   return monthTransactions(month)
     .filter(function (row) {
       return String(row.recurring_id || '').trim() !== '' &&
-        String(row.status).trim() === 'expected';
+        isReservedStatus(row.status);
     })
     .map(function (row) {
       var id = String(row.recurring_id).trim();

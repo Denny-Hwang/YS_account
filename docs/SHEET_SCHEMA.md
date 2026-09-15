@@ -19,7 +19,7 @@
 | currency | `USD` \| `KRW` |
 | amount_usd | USD 환산 금액(소수 둘째 자리). 환불은 음수 |
 | recurring_id | Recurring.id 참조. 고정 항목과 건별 수입원(kind=variable) |
-| status | `active` \| `expected` \| `confirmed` \| `deleted` |
+| status | `active` \| `expected` \| `committed` \| `confirmed` \| `deleted` (아래 표) |
 | memo | 자유 메모. 환불은 `환불`, 같은 고정 항목의 두 번째 결제는 `이번 달 2번째` 가 들어간다 |
 | payer | 기록한 사람 이름(또는 Telegram id) |
 | source | `telegram` \| `web` \| `recurring` \| `csv` \| `migration` |
@@ -29,7 +29,24 @@
 
 헤더 순서: `id, date, type, kind, category, envelope, merchant, amount, currency, amount_usd, recurring_id, status, memo, payer, source, created_at, updated_at, updated_by`
 
-집계 규칙: "실제" 는 `status ∈ {active, confirmed}` 만 센다. `expected` 는 예정이고 `deleted` 는 없는 것이다.
+### status 다섯 가지
+
+| 값 | 뜻 | 예산에 반영 | 집행 완료 |
+|---|---|---|---|
+| `active` | 봇·웹앱으로 기록한 유동비 | ○ | ○ |
+| `confirmed` | 실제 금액이 들어온 고정 항목 | ○ | ○ |
+| `committed` | 금액이 정해진 고정 항목. 달이 열릴 때 미리 잡는다(렌트·구독료·보험) | ○ | ✕ |
+| `expected` | 금액을 모르는 예약(관리비·전기세·급여). 고지서나 입금을 봐야 안다 | ✕ | ✕ |
+| `deleted` | 취소된 행. 물리적으로 지우지 않는다 | ✕ | ✕ |
+
+`committed` 가 있는 이유는 착시를 막기 위해서다. 렌트가 아직 안 나갔다고 예산에서 빼지 않으면
+달 초에는 늘 여유가 있어 보이고 말일에 갑자기 부족해진다. 금액이 정해진 것은 미리 뺀다.
+
+집계 규칙:
+- 예산·지출 합계는 `status ∈ {active, confirmed, committed}` 를 센다(`Budget.isSpentStatus`).
+- 수입 합계는 실제로 들어온 `{active, confirmed}` 만 센다. 들어올 예정인 돈을 더하면 반대 방향의 착시가 생긴다.
+- `expected` 는 금액이 정해지지 않아 어느 쪽에도 넣지 않는다. `deleted` 는 없는 것이다.
+
 봇·웹앱·`Monthly_View`·`Dashboard` 가 모두 같은 기준을 쓴다. `transfer` 는 수입도 지출도 아니다.
 
 ## Recurring (고정 항목: 고정비 · 수입원 · 저축)
@@ -48,8 +65,22 @@
 | active | `Y` \| `N` |
 | notes | 메모 |
 | type | `income` \| `expense` \| `transfer`. 비어 있으면 expense. `transfer` 는 "먼저 저축" 항목이다 |
+| certainty | `fixed`(금액 확정) \| `variable`(금액 변동). 비어 있으면 아래 규칙으로 추론한다 |
 
-헤더 순서: `id, name, kind, category, expected_amount, currency, due_day, amount_rule, tolerance_pct, active, notes, type` (extendable)
+헤더 순서: `id, name, kind, category, expected_amount, currency, due_day, amount_rule, tolerance_pct, active, notes, type, certainty` (extendable)
+
+`certainty` 는 그 달 예약 행을 `committed` 로 만들지 `expected` 로 만들지 정한다
+(`LedgerRules.recurringCertainty` / `initialRecurringStatus`). 비어 있을 때의 추론은 이렇다.
+
+| 조건 | 결과 |
+|---|---|
+| `type` 가 `income` | `variable` — 들어와야 있는 돈이다 |
+| `amount_rule` 이 `fixed` 가 아님(`income_pct`, `biweekly`) | `variable` — 달마다 계산이 달라진다 |
+| `tolerance_pct` 가 0 | `fixed` — 금액이 정해진 항목이다 |
+| 그 밖에 | `variable` |
+
+`certainty` 를 바꾼 뒤 이미 만들어진 달을 맞추려면 `Recurring.gs` 의 `resyncReservedStatuses` 를 실행한다.
+확정된(`confirmed`) 행과 실제 기록(`active`)은 건드리지 않는다.
 
 `amount_rule` 규칙 (해석은 `LedgerRules.parseAmountRule`, 계산은 `expectedAmountFor`. 봇과 웹앱이 같은 함수를 쓴다):
 

@@ -126,8 +126,18 @@ Apps Script 편집기 → 우상단 `배포` → `새 배포` → 유형 `웹 �
 4. `얼마 남았어` 를 보내면 봉투별 상태가 한 줄씩 온다.
 
 ### 문제가 생기면
-- 봇이 아무 반응이 없다 → `Log` 탭 확인. 비어 있으면 token 불일치이거나 `allowed_telegram_ids` 누락이다.
-- `Config.allowed_telegram_ids` 에 본인 ID 가 콤마로 정확히 들어갔는지 확인한다(공백 무방).
+**먼저 `Telegram.gs` 의 `diagnoseWebhook` 을 실행한다.** 실행 로그에 원인 후보가 한 번에 나온다.
+비밀값은 가려서 찍으므로 결과를 그대로 복사해도 된다.
+
+- **회신이 올 때도 있고 안 올 때도 있다** → `Log` 탭 꼬리를 보고 셋 중 어디인지 가른다.
+  1. `수신` 줄이 있고 회신만 없다 → 회신 쪽 문제다. 같은 줄 근처의 `tg:sendMessage` 오류를 본다.
+  2. `거부:` 줄이 있다 → 그 줄이 사유다. `allowed_telegram_ids` 에 없는 id 면 그 줄에 실제 id 가 찍혀 있으니
+     `Config` 탭에 그대로 넣는다. 두 사람 중 한 명만 회신을 못 받는 전형적인 원인이다.
+  3. 아무 줄도 없다 → 요청이 스크립트에 닿지 않았다. `diagnoseWebhook` 의 `배포 URL 일치`,
+     `token 일치`, `밀린 업데이트`, `마지막 오류` 를 본다. `새 배포` 를 새로 만들었으면 URL 이 바뀌었으므로
+     `WEBAPP_URL` 을 갱신하고 `setWebhook` 을 다시 실행해야 한다.
+- 배포 설정은 `실행 계정: 나`, `액세스 권한: 모든 사용자` 여야 한다. 주소는 `/dev` 가 아니라 `/exec` 다.
+- `Config.allowed_telegram_ids` 에 두 사람 ID 가 콤마로 정확히 들어갔는지 확인한다(공백 무방).
 - Config 값은 5분 캐시된다. 바꾼 직후라면 잠시 기다리거나 `clearConfigCache` 를 실행한다.
 - **회신이 여러 번 온다** → 순서대로 본다.
   1. 위 "새 버전 배포" 를 했는가. 안 했으면 웹훅은 아직 예전 코드를 돌리고 있다.
@@ -136,6 +146,26 @@ Apps Script 편집기 → 우상단 `배포` → `새 배포` → 유형 `웹 �
   3. `Log` 탭에서 같은 `update_id` 가 여러 줄인지 본다. 여러 줄이면 중복 검사가 안 도는 것이고,
      한 줄인데 답장이 여러 번이면 회신 쪽 문제다.
   4. `setupSheet` 을 한 번 실행해 `Log` 탭에 `update_id` 열이 있는지 확인한다.
+
+### e. 금액이 정해진 고정비는 미리 빼 둔다
+
+렌트가 아직 안 나갔다고 예산에서 빼지 않으면 달 초에는 늘 여유가 있어 보이고 말일에 갑자기 부족해진다.
+그래서 **금액이 정해진 고정비는 달이 열릴 때 바로 예산에서 뺀다.**
+
+| `Recurring.certainty` | 그 달 예약 행 상태 | 예산 반영 | 보기 |
+|---|---|---|---|
+| `fixed` (렌트·구독료·보험·부채상환·저축) | `committed` | 달이 열릴 때 바로 | 원장에 `확정·선반영` 배지 |
+| `variable` (관리비·전기세·유류비·급여) | `expected` | 실제 금액을 보낼 때 | 원장에 `예정` 배지 |
+
+- 어느 쪽인지는 웹앱 **고정비** 화면에서 항목을 눌러 `금액 확정으로` / `금액 변동으로` 로 바꾼다.
+  시트의 `Recurring.certainty` 열을 직접 고쳐도 된다.
+- `certainty` 를 비워 두면 `tolerance_pct` 가 0 이고 `amount_rule` 이 `fixed` 인 지출을 확정으로 본다.
+- 이미 만들어진 달을 새 기준으로 맞추려면 `Recurring.gs` 의 `resyncReservedStatuses` 를 실행한다.
+- `committed` 행도 실제 금액을 보내면 그 행이 `confirmed` 로 바뀐다. 새 행이 생기지 않으므로 두 번 세지 않는다.
+  `취소` 하면 `committed` 로 돌아가 예산에서는 계속 빠진 채로 남는다.
+
+수입은 반대다. 들어올 예정인 급여는 실제로 받기 전까지 수입 합계에 넣지 않는다.
+더해 놓으면 "이번 달 흑자" 처럼 보이는 반대 방향의 착시가 생긴다.
 
 ---
 
@@ -507,6 +537,7 @@ Apps Script 편집기 왼쪽 파일 목록에서 파일을 고른 뒤, 상단 �
 |---|---|---|
 | `setWebhook` | `Telegram.gs` | 웹훅 등록. 웹 앱 배포 후 실행 |
 | `getWebhookInfo` | `Telegram.gs` | 웹훅 상태와 마지막 오류 확인 |
+| `diagnoseWebhook` | `Telegram.gs` | 회신이 안 올 때 원인 후보를 한 번에 진단 |
 | `deleteWebhook` | `Telegram.gs` | 웹훅 해제 |
 
 ### 트리거와 정기 작업
@@ -521,6 +552,7 @@ Apps Script 편집기 왼쪽 파일 목록에서 파일을 고른 뒤, 상단 �
 | `ensureMonthOpened` | `Jobs.gs` | 이번 달이 안 열렸으면 연다(멱등) |
 | `postMonthlyRecurring` | `Recurring.gs` | 이번 달 고정 항목 예정 행 생성 |
 | `recomputeIncomePct` | `Recurring.gs` | 수입 비율 항목 다시 계산 |
+| `resyncReservedStatuses` | `Recurring.gs` | 예약 행을 지금 `certainty` 기준으로 맞춘다(committed ↔ expected) |
 
 ### 화면 다시 그리기
 

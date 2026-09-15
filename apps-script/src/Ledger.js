@@ -347,7 +347,8 @@ function confirmRecurring(definition, parsed, meta) {
         amount: target.amount,
         currency: target.currency,
         amount_usd: target.amount_usd,
-        date: toDateStr(target.date)
+        date: toDateStr(target.date),
+        status: String(target.status).trim()
       }
     });
     updateRowById(SHEETS.TRANSACTIONS.name, target.id, {
@@ -491,7 +492,12 @@ function undoLast(userId) {
     if (def) {
       var currency = String(def.currency || 'USD').trim().toUpperCase();
       var expected = recurringExpectedAmount(def, String(toDateStr(row.date)).slice(0, 7));
-      fallback = { amount: expected, currency: currency, amount_usd: toUsd(expected, currency) };
+      fallback = {
+        amount: expected,
+        currency: currency,
+        amount_usd: toUsd(expected, currency),
+        status: initialRecurringStatus(def)
+      };
     }
   }
   var plan = undoPlan(row, memo, fallback);
