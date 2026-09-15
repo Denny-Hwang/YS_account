@@ -13,17 +13,23 @@
 - **P0 ~ P10 완료** (2026-09-11 ~ 13).
 - 검증: 비밀값 grep 빈 결과.
 
+## 실제 연결 상태 (2026-09-15)
+시트·봇·트리거·웹앱이 모두 붙었고 P12 까지 반영됐다. 밀린 5건은 `webhookWatchdog` 이 회수했다.
+
 ## 다음 할 일
-0. **P12 반영.** `clasp push` → 새 버전 배포 → `Setup.gs` 의 `setupSheet`(Recurring 에 `certainty` 열 추가)
-   → `Recurring.gs` 의 `resyncReservedStatuses`(이미 만들어진 예약 행 보정) → `Views.gs` 의 `buildMonthlyView`·`buildDashboard`(수식 갱신)
-   → `Jobs.gs` 의 `installTriggers`(웹훅 감시 트리거 추가).
-1. **실제 연결.** `docs/SETUP.md` 를 순서대로 따라 시트·봇·트리거·웹앱을 붙인다.
-   기존 시트가 있다면 `setupSheet` 을 한 번 실행해 `Debts.recurring_id`, `Assets.fx_usd_krw`, Config 새 키가 붙게 한다.
-   `installTriggers` 를 다시 실행해 `weeklyDigest` 트리거를 추가한다. 배포는 "새 버전" 으로.
-2. **한 달 사용 뒤 점검.** 아침 요약이 한 줄로 오는지, 빨강 회신의 "예비비에서 옮기기" 버튼이 쓸모 있는지,
-   주간 결산 요일(`Config.weekly_digest_day`)이 맞는지 본다.
-3. **기존 가계부 이관.** `previewMigrationSource` → `MIGRATION_MAP` → `migrateAll` → `migrateAllCommit`.
-4. 아이폰 홈 화면 앱에서 구글 로그인 창이 매번 뜨는지 확인한다(REVIEW L6). 토큰을 sessionStorage 에 두어 줄였지만 실기기 확인이 필요하다.
+1. **웹훅이 다시 막히는지 본다.** `Jobs.gs` 의 `webhookWatchdog` 이 5분마다 돈다.
+   `Log` 탭에 `[감시]` 줄이 얼마나 자주 생기는지가 지표다. 며칠에 한 번이면 그대로 두고,
+   하루에 여러 번이면 중계 서버(Cloudflare Worker)를 앞에 두는 쪽을 다시 생각한다.
+2. **급여일 확인.** `Recurring.gs` 의 `checkPaydays` 를 실행해 1월·8월에 급여일이 3번 잡히는지 본다.
+   어긋나면 `Recurring.amount_rule` 의 `biweekly:<금액>@<기준일>` 기준일을 고친다.
+3. **`certainty` 가 실제와 맞는지 본다.** 웹앱 고정비 화면에서 항목별 `금액 확정 / 금액 변동` 을 확인한다.
+   바꿨으면 `Recurring.gs` 의 `resyncReservedStatuses` 를 다시 실행한다.
+4. **`WEBHOOK_SECRET` 교체.** 배포 URL 과 토큰 앞자리가 대화에 노출됐다.
+   `openssl rand -hex 24` 로 새로 만들어 Script Properties 를 바꾸고 `Telegram.gs` 의 `setWebhook` 재실행.
+5. **한 달 사용 뒤 점검.** 아침 요약이 한 줄로 오는지, 빨강 회신의 "예비비에서 옮기기" 버튼이 쓸모 있는지,
+   주간 결산 요일(`Config.weekly_digest_day`)이 맞는지, 저축률이 현실과 맞는지 본다.
+6. **기존 가계부 이관.** `previewMigrationSource` → `MIGRATION_MAP` → `migrateAll` → `migrateAllCommit`.
+7. 아이폰 홈 화면 앱에서 구글 로그인 창이 매번 뜨는지 확인한다(REVIEW L6). 토큰을 sessionStorage 에 두어 줄였지만 실기기 확인이 필요하다.
 
 ## 완료 이력
 | 단계 | 커밋 | 날짜 |
@@ -45,14 +51,19 @@
 | P12 | P12: 원장 달력 뷰와 금액 확정 고정비 예산 선반영 | 2026-09-15 |
 | P12.1 | P12.1: 웹훅 302 자동 복구 감시 | 2026-09-15 |
 
+## 알려진 한계
+- Apps Script 웹 앱은 Telegram 에 302 를 돌려준다. 배포 설정으로도 코드로도 못 고친다(`probeWebappUrl` 로 실측).
+  `webhookWatchdog` 이 5분마다 밀린 건을 회수해 우회하지만, 근본 해결은 중계 서버를 앞에 두는 것뿐이다.
+  "서버가 없다" 원칙을 지키려고 지금 방식을 택했다.
+
 ## 미결 사항
 - 없음. ADR-0003 의 세 항목이 모두 결정됐다.
 - 저장소가 공개라면 이력에 남은 예전 스크린샷·시드 값은 지울 수 없다. 비공개 전환은 사용자 판단.
 
 ## 사용자 사전 준비 체크리스트 (저장소에 값 기록 금지)
-- [ ] Google Sheet 생성 및 배우자 계정 공유 → SPREADSHEET_ID
-- [ ] Apps Script 프로젝트 생성 → Script ID
-- [ ] @BotFather 로 봇 생성 → BOT_TOKEN
-- [ ] 두 사람의 Telegram user ID
-- [ ] WEBHOOK_SECRET 생성 (`openssl rand -hex 24`)
-- [ ] (선택) clasp 설치·로그인
+- [x] Google Sheet 생성 및 배우자 계정 공유 → SPREADSHEET_ID
+- [x] Apps Script 프로젝트 생성 → Script ID
+- [x] @BotFather 로 봇 생성 → BOT_TOKEN
+- [x] 두 사람의 Telegram user ID
+- [x] WEBHOOK_SECRET 생성 (`openssl rand -hex 24`) — 노출되어 교체 필요(위 4번)
+- [x] clasp 설치·로그인
