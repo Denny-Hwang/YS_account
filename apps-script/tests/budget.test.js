@@ -59,7 +59,7 @@ test('오늘 지출은 하루치(allowanceToday)는 그대로 두고 오늘 남�
   assert.equal(s.remaining, 764.98);
 });
 
-test('환불(음수 금액)은 같은 봉투의 지출을 줄인다', () => {
+test('환불(음수 금액)은 같은 세부예산의 지출을 줄인다', () => {
   const s = envelopeStatus({
     budget: 500,
     envelope: '식료품',
@@ -100,7 +100,7 @@ test('kind=fixed 행은 제외한다', () => {
   assert.equal(s.spentTotal, 100);
 });
 
-test('다른 봉투와 다른 달의 행은 제외한다', () => {
+test('다른 세부예산과 다른 달의 행은 제외한다', () => {
   const s = envelopeStatus({
     budget: 500,
     envelope: '식료품',

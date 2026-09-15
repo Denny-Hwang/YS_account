@@ -1,7 +1,7 @@
 /**
  * Jobs.js — 시간 트리거로 도는 작업. 아침 요약, 주간 결산, 월 시작, 월 마감.
  * 사람이 아무것도 하지 않아도 고정비가 잡히고 상태가 전달되게 한다.
- * 아침 요약은 예외 기반이다. 전부 초록이면 한 줄, 아니면 문제 있는 봉투만 길게 쓴다.
+ * 아침 요약은 예외 기반이다. 전부 초록이면 한 줄, 아니면 문제 있는 세부예산만 길게 쓴다.
  */
 
 /** 이 파일이 설치하는 트리거 핸들러. installTriggers 는 이 이름들만 지우고 다시 만든다. */
@@ -22,7 +22,7 @@ function broadcast(text) {
   return ids.length;
 }
 
-/** 봉투별 envelopeStatus 목록. */
+/** 세부예산별 envelopeStatus 목록. */
 function envelopeStatuses(month, transactions, today) {
   return getConfigList('envelopes').map(function (envelope) {
     return {
@@ -95,7 +95,7 @@ function ensureMonthOpened(yyyyMm) {
 }
 
 /**
- * 아침 요약. 예외 기반: 전부 초록이면 한 줄, 아니면 문제 있는 봉투만 길게.
+ * 아침 요약. 예외 기반: 전부 초록이면 한 줄, 아니면 문제 있는 세부예산만 길게.
  * 오늘 결제일인 고정 항목과 지나간 미확정 항목은 항상 알린다.
  */
 function dailySummary() {
@@ -124,7 +124,7 @@ function dailySummary() {
   var allGreen = statuses.length > 0 && statuses.every(function (s) { return s.status.signal === 'green'; });
   if (allGreen) {
     var leftTotal = statuses.reduce(function (a, s) { return a + s.status.allowanceLeftToday; }, 0);
-    lines.push('🟢 전 봉투 계획 안 · 오늘 ' + formatUsd(roundCents(leftTotal)) +
+    lines.push('🟢 전 세부예산 계획 안 · 오늘 ' + formatUsd(roundCents(leftTotal)) +
       ' (남은 ' + remainingDaysInclToday(today) + '일)');
   } else {
     statuses.forEach(function (s) {
@@ -253,7 +253,7 @@ function monthlyOpen() {
   CacheService.getScriptCache().put('month_open_' + month, '1', MONTH_OPEN_FLAG_TTL_SECONDS);
 
   var lines = ['🗓 ' + month + ' 시작'];
-  lines.push('예산 ' + (opened.added + seeded) + '개 봉투 준비, 고정 항목 ' + posted + '건 예약');
+  lines.push('예산 ' + (opened.added + seeded) + '개 세부예산 준비, 고정 항목 ' + posted + '건 예약');
   opened.notes.forEach(function (note) {
     lines.push('· ' + note);
   });
@@ -269,9 +269,9 @@ function monthlyOpen() {
 
 /**
  * 이번 달 예산 행을 전월에서 만든다. 규칙은 LedgerRules.nextMonthBudgets 에 있다.
- * - carry 봉투는 전월 양수 잔액을 더한다(싱킹 펀드).
+ * - carry 세부예산은 전월 양수 잔액을 더한다(싱킹 펀드).
  * - 전월 초과분은 Config.overspend_envelope 의 이번 달 금액에서 뺀다.
- * 이미 이번 달 행이 있는 봉투는 건너뛴다(멱등).
+ * 이미 이번 달 행이 있는 세부예산은 건너뛴다(멱등).
  * @param {string} month 'YYYY-MM'
  * @return {{added: number, notes: !Array<string>}}
  */
@@ -345,7 +345,7 @@ function previousMonth(month) {
 /**
  * 월 마감 보고. 말일에만 실제로 보낸다. 데이터는 바꾸지 않는다.
  * 트리거는 매일 21시에 돌고, 말일 여부는 이 함수가 판정한다.
- * 점수 세 개(저축률, 예산 안 봉투 수, 고정비 편차 건수)를 지난달과 나란히 보여 준다.
+ * 점수 세 개(저축률, 예산 안 세부예산 수, 고정비 편차 건수)를 지난달과 나란히 보여 준다.
  * @return {string} 보낸 메시지. 말일이 아니면 빈 문자열.
  */
 function monthlyClose() {
@@ -417,7 +417,7 @@ function buildMonthlyCloseReport(month, asOf, send) {
   lines.push('');
   lines.push('점수 · 저축률 ' + (score.savingRate === null ? '-' : score.savingRate + '%') +
     ' (지난달 ' + (prevScore.savingRate === null ? '-' : prevScore.savingRate + '%') + ')' +
-    ' · 예산 안 ' + score.withinBudget + '/' + score.envelopes + ' 봉투' +
+    ' · 예산 안 ' + score.withinBudget + '/' + score.envelopes + ' 세부예산' +
     ' (지난달 ' + prevScore.withinBudget + '/' + prevScore.envelopes + ')' +
     ' · 고정비 편차 ' + score.deviations + '건');
 

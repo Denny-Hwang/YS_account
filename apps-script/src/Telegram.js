@@ -363,7 +363,7 @@ function buildDeleteKeyboard(txId) {
 }
 
 /**
- * 봉투 간 예산 이동 버튼. `mv|fromIndex|toIndex|amount` (index 는 Config.envelopes 기준).
+ * 세부예산 간 예산 이동 버튼. `mv|fromIndex|toIndex|amount` (index 는 Config.envelopes 기준).
  * @param {number} fromIdx
  * @param {number} toIdx
  * @param {number} amount USD 정수

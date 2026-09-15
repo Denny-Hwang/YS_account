@@ -93,7 +93,7 @@ export function Report({ workbook, today }: { workbook: Workbook; today: string 
 
       <Card title={`${selected} 유동비 누적`}>
         {pace.budget === 0 ? (
-          <Empty>이 달의 예산이 없습니다. 예산 탭에서 봉투 금액을 넣으세요.</Empty>
+          <Empty>이 달의 예산이 없습니다. 예산 탭에서 세부예산 금액을 넣으세요.</Empty>
         ) : (
           <>
             <LineChart
@@ -113,7 +113,7 @@ export function Report({ workbook, today }: { workbook: Workbook; today: string 
       </Card>
 
       {multiples.length > 0 && (
-        <Card title="봉투별 6개월 추이">
+        <Card title="세부예산별 6개월 추이">
           <SmallMultiples items={multiples} months={sixMonths} />
         </Card>
       )}

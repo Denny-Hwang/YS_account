@@ -177,7 +177,7 @@ function payerName(userId) {
   return name || String(userId);
 }
 
-/** 해당 월·봉투의 예산 금액. 없으면 0. */
+/** 해당 월·세부예산의 예산 금액. 없으면 0. */
 function getBudgetAmount(month, envelope) {
   var rows = readAllCached(SHEETS.BUDGETS.name);
   for (var i = 0; i < rows.length; i++) {
@@ -510,7 +510,7 @@ function undoLast(userId) {
 }
 
 /**
- * 봉투 사이에서 이번 달 예산을 옮긴다. Budgets 행의 amount 만 바꾼다.
+ * 세부예산 사이에서 이번 달 예산을 옮긴다. Budgets 행의 amount 만 바꾼다.
  * @param {string} month 'YYYY-MM'
  * @param {string} from
  * @param {string} to
@@ -520,10 +520,10 @@ function undoLast(userId) {
 function moveBudget(month, from, to, amountUsd) {
   var envelopes = getConfigList('envelopes');
   if (envelopes.indexOf(from) < 0 || envelopes.indexOf(to) < 0) {
-    throw new Error('봉투 이름을 찾지 못했습니다: ' + from + ' → ' + to + ' (봉투: ' + envelopes.join(', ') + ')');
+    throw new Error('세부예산 이름을 찾지 못했습니다: ' + from + ' → ' + to + ' (세부예산: ' + envelopes.join(', ') + ')');
   }
   if (from === to) {
-    throw new Error('같은 봉투입니다.');
+    throw new Error('같은 세부예산입니다.');
   }
   var amount = Number(amountUsd) || 0;
   if (!(amount > 0)) {

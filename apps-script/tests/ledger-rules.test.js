@@ -50,7 +50,7 @@ test('되돌리기: 추가한 행은 삭제, 확정한 행은 expected 로 복�
   assert.equal(fb.patch.status, 'expected');
 });
 
-test('다음 달 예산: carry 는 양수 잔액만 이월, 초과분은 흡수 봉투에서 뺀다', () => {
+test('다음 달 예산: carry 는 양수 잔액만 이월, 초과분은 흡수 세부예산에서 뺀다', () => {
   const prev = [
     { envelope: '식료품', amount: 1000, carryover: 'reset' },
     { envelope: '생필품', amount: 100, carryover: 'reset' },
@@ -73,7 +73,7 @@ test('다음 달 예산: carry 는 양수 잔액만 이월, 초과분은 흡수 
   assert.match(by['식료품'].note, /초과 80/);
 });
 
-test('다음 달 예산: 흡수 봉투가 없으면 초과분은 사라지고, carry 봉투의 음수는 이월하지 않는다', () => {
+test('다음 달 예산: 흡수 세부예산이 없으면 초과분은 사라지고, carry 세부예산의 음수는 이월하지 않는다', () => {
   const next = nextMonthBudgets(
     [{ envelope: '식료품', amount: 1000, carryover: 'carry' }],
     { '식료품': { remaining: -30 } },

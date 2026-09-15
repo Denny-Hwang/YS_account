@@ -219,7 +219,7 @@ test('애매한 금액은 버튼으로 묻고, 확실한 후보는 바로 고른
   assert.equal(tx.length, 1);
 });
 
-test('환불은 같은 봉투의 음수 지출이고 잔액을 늘린다', () => {
+test('환불은 같은 세부예산의 음수 지출이고 잔액을 늘린다', () => {
   const ctx = fresh();
   msg(ctx, '코스트코 100');
   msg(ctx, '환불 코스트코 20');
@@ -230,7 +230,7 @@ test('환불은 같은 봉투의 음수 지출이고 잔액을 늘린다', () =>
   assert.match(lastText(ctx), /잔액 \$920\.00/);
 });
 
-test('봉투 초과는 빨강 + "예비비에서 옮기기" 버튼, 이동 명령은 예산을 옮긴다', () => {
+test('세부예산 초과는 빨강 + "예비비에서 옮기기" 버튼, 이동 명령은 예산을 옮긴다', () => {
   const ctx = fresh();
   msg(ctx, '다이소 130');
   assert.match(lastText(ctx), /^🔴 생필품/);
@@ -299,16 +299,16 @@ test('committed 고정비도 실제 금액을 보내면 그 행이 확정되고,
   assert.equal(ctx.monthTotals('2026-09').expense, 1230, '취소해도 합계가 튀지 않는다');
 });
 
-test('아침 요약은 전부 초록이면 한 줄, 아니면 문제 봉투만 길게', () => {
+test('아침 요약은 전부 초록이면 한 줄, 아니면 문제 세부예산만 길게', () => {
   const ctx = fresh();
   let text = ctx.dailySummary();
-  assert.match(text, /🟢 전 봉투 계획 안 · 오늘 \$/);
+  assert.match(text, /🟢 전 세부예산 계획 안 · 오늘 \$/);
   assert.match(text, /💰 저축 \$0\.00 \/ \$300\.00/);
   msg(ctx, '다이소 130');
   text = ctx.dailySummary();
   assert.match(text, /🔴 생필품 오늘 남은/);
   assert.match(text, /🟢 식료품 오늘 \$/);
-  assert.ok(!/전 봉투 계획 안/.test(text));
+  assert.ok(!/전 세부예산 계획 안/.test(text));
 });
 
 test('월 마감 점수와 주간 결산이 만들어진다', () => {
@@ -318,7 +318,7 @@ test('월 마감 점수와 주간 결산이 만들어진다', () => {
   const report = ctx.buildMonthlyCloseReport('2026-09', '2026-09-30', false);
   // 수입 3000, 지출 400(유동비) + 1230(금액 확정 고정비) = 1630 → 저축률 46%.
   // 고정비를 미리 세지 않던 때의 87% 는 착시였다.
-  assert.match(report, /점수 · 저축률 46% \(지난달 -\) · 예산 안 3\/3 봉투/);
+  assert.match(report, /점수 · 저축률 46% \(지난달 -\) · 예산 안 3\/3 세부예산/);
   ctx.setConfig('weekly_digest_day', String(new Date(new Date('2026-09-13T20:00:00Z').toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })).getDay()));
   const weekly = ctx.weeklyDigest();
   assert.match(weekly, /📈 주간 결산/);
@@ -387,7 +387,7 @@ test('지난달 지출을 뒤늦게 기록하면 그 달 기준으로 결산해 
   assert.match(text, /✓ 2026-08 식료품 \$190\.05 기록/);
   assert.match(text, /2026-08 실행 \$190\.05 \/ 예산 \$1,000\.00 · 잔액 \$809\.95/);
   assert.ok(!/오늘 남은/.test(text), '지난달 기록에 "오늘 남은" 은 뜻이 없다');
-  // 이번 달 봉투 상태는 지난달 기록에 영향받지 않는다
+  // 이번 달 세부예산 상태는 지난달 기록에 영향받지 않는다
   msg(ctx, '코스트코 10');
   assert.match(lastText(ctx), /^🟢 식료품 오늘 남은/);
 });

@@ -1,5 +1,5 @@
 /**
- * LlmAssist.js — 사전에 없는 가맹점의 봉투를 Claude 가 추천한다.
+ * LlmAssist.js — 사전에 없는 가맹점의 세부예산을 Claude 가 추천한다.
  *
  * 경계 (CLAUDE.md Golden Rule 2)
  * - 금액·날짜·통화는 절대 건드리지 않는다. 그건 규칙 기반 파서만 한다.
@@ -19,7 +19,7 @@ function llmAssistEnabled() {
 }
 
 /**
- * 사전에 없는 가맹점에 어울리는 봉투를 하나 추천한다.
+ * 사전에 없는 가맹점에 어울리는 세부예산을 하나 추천한다.
  * @param {string} merchantText 가맹점 텍스트(사용자가 보낸 원문 조각)
  * @param {!Array<string>} choices 고를 수 있는 라벨 목록
  * @param {!Array<!Object>} merchants Merchants 탭 객체 배열. 예시로 몇 줄만 쓴다.
@@ -46,7 +46,7 @@ function suggestEnvelope(merchantText, choices, merchants) {
     .join('\n');
 
   var system = [
-    '너는 가계부 분류 도우미다. 가맹점 이름 하나를 받아 어느 봉투에 넣을지 고른다.',
+    '너는 가계부 분류 도우미다. 가맹점 이름 하나를 받아 어느 세부예산에 넣을지 고른다.',
     '규칙:',
     '1. 반드시 보기 목록에 있는 라벨 하나만 답한다. 설명이나 문장 부호를 덧붙이지 않는다.',
     '2. 판단할 근거가 부족하면 정확히 UNKNOWN 이라고 답한다. 추측해서 억지로 고르지 않는다.',

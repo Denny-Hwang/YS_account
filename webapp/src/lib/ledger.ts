@@ -204,12 +204,72 @@ export async function softDeleteTransaction(
   await patchTransaction(ctx, workbook, target, { status: 'deleted', updated_by: by })
 }
 
-/** 해당 월·봉투의 예산 금액. */
+/** 해당 월·세부예산의 예산 금액. */
 export function budgetAmount(workbook: Workbook, month: string, envelope: string): number {
   const hit = workbook.budgets.find(
     (row) => String(row.month).trim() === month && String(row.envelope).trim() === envelope
   )
   return hit ? Number(hit.amount) || 0 : 0
+}
+
+/**
+ * 화면에 보여 줄 세부예산 하나.
+ *
+ * 시트에는 분류가 두 열로 나뉘어 있다. `envelope` 은 예산이 붙는 유동비 세부예산이고,
+ * `category` 는 그 밖의 분류(주거비·통신비 같은 고정비 포함)다.
+ * 사람은 이 둘을 하나로 본다. 그래서 화면에서는 한 목록으로 합쳐 보여 주고,
+ * 고를 때 어느 열에 쓸지는 categoryFields 가 정한다.
+ */
+export interface CategoryOption {
+  name: string
+  /** Config.envelopes 에 있는가. 예산과 신호등이 붙는 유동비 세부예산이다. */
+  budgeted: boolean
+}
+
+/**
+ * 고를 수 있는 세부예산 전부. 유동비 세부예산이 먼저 오고 그 밖의 분류가 뒤따른다.
+ *
+ * 뒤쪽은 네 군데에서 모은다.
+ *   Config.categories  — 직접 적어 둔 목록. 아직 한 번도 안 쓴 분류를 미리 넣을 때
+ *   Recurring.category — 고정비 분류(주거비·통신비·보험 …)
+ *   Merchants.category — 사전이 아는 분류(외식 …)
+ *   Transactions.category — 지금까지 실제로 쓴 분류
+ * 한 번 쓴 분류는 다음부터 목록에 있으므로 따로 등록하지 않아도 된다.
+ */
+export function categoryOptions(workbook: Workbook): CategoryOption[] {
+  const envelopes = configList(workbook.config, 'envelopes')
+  const seen = new Set(envelopes)
+  const others: string[] = []
+  const add = (raw: unknown) => {
+    const name = String(raw ?? '').trim()
+    if (!name || seen.has(name)) return
+    seen.add(name)
+    others.push(name)
+  }
+  configList(workbook.config, 'categories').forEach(add)
+  workbook.recurring.forEach((row) => add(row.category))
+  workbook.merchants.forEach((row) => add(row.category))
+  workbook.transactions.forEach((row) => add(row.category))
+  others.sort((a, b) => a.localeCompare(b, 'ko'))
+  return envelopes
+    .map((name) => ({ name, budgeted: true }))
+    .concat(others.map((name) => ({ name, budgeted: false })))
+}
+
+/**
+ * 고른 값을 원장의 두 열로 푼다.
+ * 유동비 세부예산이면 envelope 에도 넣어 예산과 신호등에 잡히게 하고,
+ * 그 밖의 분류면 envelope 을 비워 유동비 예산을 건드리지 않는다.
+ */
+export function categoryFields(workbook: Workbook, name: string): { category: string; envelope: string } {
+  const picked = String(name ?? '').trim()
+  const budgeted = configList(workbook.config, 'envelopes').indexOf(picked) >= 0
+  return { category: picked, envelope: budgeted ? picked : '' }
+}
+
+/** 원장 행에 보여 줄 분류 이름. envelope 이 있으면 그것이 곧 세부예산이다. */
+export function categoryOf(row: SheetRow): string {
+  return String(row.envelope ?? '').trim() || String(row.category ?? '').trim()
 }
 
 /** 해당 월의 원장 행. */
@@ -298,13 +358,27 @@ export interface RecordResult {
  * - kind=variable 정의(레슨)는 보통 행처럼 추가하되 recurring_id 를 남긴다.
  * - 그 밖에는 새 행. 환불은 음수 금액의 지출이다.
  */
+export interface RecordOverrides {
+  /** 'YYYY-MM-DD'. 비우면 파싱한 날짜를 쓴다. */
+  date?: string
+  /** 화면에서 고른 세부예산. 비우면 사전 분류에 맡긴다. */
+  category?: string
+  /** 'expense' | 'income' | 'transfer'. 비우면 파싱 결과를 쓴다. */
+  type?: string
+}
+
 export async function recordParsed(
   ctx: SheetsContext,
   workbook: Workbook,
   parsed: ParsedMessage,
   hit: Record<string, unknown> | null,
-  by: string
+  by: string,
+  overrides: RecordOverrides = {}
 ): Promise<RecordResult> {
+  // 사람이 고른 값이 파싱 결과를 이긴다. 비운 칸은 지금까지처럼 자동으로 채워진다.
+  if (overrides.date) {
+    parsed = { ...parsed, date: overrides.date }
+  }
   const month = parsed.date.slice(0, 7)
   const now = nowIso()
   const recurringId = String(hit?.recurring_id ?? '').trim()
@@ -351,16 +425,22 @@ export async function recordParsed(
     return { mode: 'confirm', txId, name, type, envelope: '', nth: pick.confirmedCount + 1 }
   }
 
-  const type = def ? recurringTypeOf(def) : String(hit?.type ?? parsed.type ?? 'expense')
-  // 수입·저축은 봉투가 없다. 지출인데 사전에 없으면 첫 봉투로 넣고 원장에서 고친다.
-  const envelope = type === 'expense' ? String(hit?.envelope ?? (envelopes[0] ?? '')) : ''
+  const type = overrides.type || (def ? recurringTypeOf(def) : String(hit?.type ?? parsed.type ?? 'expense'))
+  // 고른 값이 있으면 그대로 쓴다. 없으면 사전이 알려 준 값, 그것도 없으면 첫 유동비 세부예산이다.
+  // 수입·저축은 유동비 세부예산을 갖지 않는다.
+  const picked = overrides.category ? categoryFields(workbook, overrides.category) : null
+  const envelope = picked
+    ? picked.envelope
+    : type === 'expense'
+      ? String(hit?.envelope ?? (envelopes[0] ?? ''))
+      : ''
   const txId = newTxId()
   await appendTransaction(ctx, workbook, {
     id: txId,
     date: parsed.date,
     type,
     kind: def ? 'variable' : String(hit?.kind ?? 'variable'),
-    category: def ? String(def.category ?? '') : String(hit?.category ?? ''),
+    category: picked ? picked.category : def ? String(def.category ?? '') : String(hit?.category ?? ''),
     envelope,
     merchant: parsed.merchantTextRaw || parsed.merchantText,
     amount: parsed.amount,

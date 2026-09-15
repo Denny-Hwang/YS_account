@@ -16,7 +16,7 @@ var RECENT_LOG_LOOKBACK = 200;
 /** 잠금을 기다리는 시간(ms). 중복 검사와 버튼 콜백에 쓴다. */
 var DEDUPE_LOCK_WAIT_MS = 10000;
 
-/** 봉투 외 선택지. 버튼 index 는 Config.envelopes + 이 배열 순서다. */
+/** 세부예산 외 선택지. 버튼 index 는 Config.envelopes + 이 배열 순서다. */
 var EXTRA_CHOICES = ['고정비', '수입'];
 
 /** Log 의 result 가 이 중 하나로 시작하면 parsed_json 을 대기 항목으로 복구해도 된다. */
@@ -25,8 +25,8 @@ var PENDING_RESULTS = ['분류 대기', '금액 확인', '영수증 분류 대�
 /** 사용법 안내. */
 var USAGE_TEXT = [
   '기록: "코스트코 85.89" 처럼 가맹점과 금액을 보내세요. "어제", "9/8", "5만원" 도 알아봅니다.',
-  '환불: "환불 코스트코 20" 은 같은 봉투에서 빼 줍니다.',
-  '조회: "얼마 남았어" 또는 "잔액" 을 보내면 봉투별 남은 금액을 알려드립니다.',
+  '환불: "환불 코스트코 20" 은 같은 세부예산에서 빼 줍니다.',
+  '조회: "얼마 남았어" 또는 "잔액" 을 보내면 세부예산별 남은 금액을 알려드립니다.',
   '이동: "이동 예비비→식료품 50" 으로 이번 달 예산을 옮깁니다.',
   '취소: "취소" 를 보내면 마지막으로 기록한 항목을 되돌립니다.'
 ].join('\n');
@@ -334,7 +334,7 @@ function classFromDefinition(def) {
 
 /**
  * 기록 의도를 처리한다.
- * 금액이 애매하면 금액 버튼을, 사전에 없으면 봉투 버튼을 보낸다. 둘 다 Log 행 번호로 이어진다.
+ * 금액이 애매하면 금액 버튼을, 사전에 없으면 세부예산 버튼을 보낸다. 둘 다 Log 행 번호로 이어진다.
  */
 function handleRecord(chatId, userId, parsed, logRow) {
   if (parsed.ambiguous && parsed.amountCandidates && parsed.amountCandidates.length > 1) {
@@ -419,7 +419,7 @@ function finishRecord(chatId, userId, parsed, cls, logRow, editTarget) {
 }
 
 /**
- * 기록 결과 회신문. 봉투 지출이면 상태 한 줄, 빨강이면 예비비 이동 버튼을 붙인다.
+ * 기록 결과 회신문. 세부예산 지출이면 상태 한 줄, 빨강이면 예비비 이동 버튼을 붙인다.
  * @return {{text: string, keyboard: ?Object}}
  */
 function buildRecordReply(parsed, result) {
@@ -484,7 +484,7 @@ function formatAmountIn(amount, currency) {
 }
 
 /**
- * 봉투가 빨강이면 "예비비에서 $N 옮기기" 버튼을 만든다. 예비비에 여유가 없으면 없다.
+ * 세부예산이 빨강이면 "예비비에서 $N 옮기기" 버튼을 만든다. 예비비에 여유가 없으면 없다.
  * @return {?Object}
  */
 function overspendKeyboard(month, envelope, status) {
@@ -512,7 +512,7 @@ function overspendKeyboard(month, envelope, status) {
 }
 
 /**
- * 조회 회신문. 유동비 봉투와 저축만 보여준다.
+ * 조회 회신문. 유동비 세부예산과 저축만 보여준다.
  * 고정비 상세·부채·자산은 봇으로 회신하지 않는다(보안 경계).
  */
 function buildQuerySummary(today) {
@@ -528,7 +528,7 @@ function buildQuerySummary(today) {
     return formatStatusLine(status, envelope);
   });
   if (!lines.length) {
-    return '봉투가 설정되지 않았습니다. Config.envelopes 를 확인하세요.';
+    return '세부예산이 설정되지 않았습니다. Config.envelopes 를 확인하세요.';
   }
   var savings = savingsPlan(month);
   if (savings.expected > 0) {
@@ -648,7 +648,7 @@ function handleCallbackLocked(cq) {
   safeAnswer(cq.id);
 }
 
-/** 버튼 선택값을 분류 객체로 바꾼다. 봉투를 골랐으면 언제나 유동비 지출이다. */
+/** 버튼 선택값을 분류 객체로 바꾼다. 세부예산을 골랐으면 언제나 유동비 지출이다. */
 function buildClassFromChoice(choice, parsed) {
   if (choice === '수입') {
     return { type: 'income', kind: 'variable', category: '기타 수입', envelope: '', recurring_id: '' };

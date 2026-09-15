@@ -1,5 +1,5 @@
 /**
- * Budget.js — 순수 모듈. 봉투별 예산 소진 상태와 롤링 일일 가용액을 계산한다.
+ * Budget.js — 순수 모듈. 세부예산별 예산 소진 상태와 롤링 일일 가용액을 계산한다.
  * Google 서비스에 의존하지 않는다.
  */
 
@@ -62,7 +62,7 @@ function remainingDaysInclToday(today) {
   return total - day + 1;
 }
 
-/** 원장 행이 해당 봉투의 유동비 지출인지 판정한다. 환불(음수 금액)도 같은 봉투의 지출로 센다. */
+/** 원장 행이 해당 세부예산의 유동비 지출인지 판정한다. 환불(음수 금액)도 같은 세부예산의 지출로 센다. */
 function isVariableExpense(tx, envelope, month) {
   if (!tx) {
     return false;
@@ -84,7 +84,7 @@ function isVariableExpense(tx, envelope, month) {
 
 /**
  * 계획 대비 차이를 신호등 한 글자로 바꾼다.
- * 초록: 계획 안. 노랑: 계획보다 앞서 썼지만 예산의 10% 이내. 빨강: 그 이상이거나 봉투 초과.
+ * 초록: 계획 안. 노랑: 계획보다 앞서 썼지만 예산의 10% 이내. 빨강: 그 이상이거나 세부예산 초과.
  * @param {!Object} status envelopeStatus 결과
  * @return {string} 'green' | 'yellow' | 'red'
  */
@@ -110,7 +110,7 @@ function signalGlyph(signal) {
 }
 
 /**
- * 봉투 하나의 예산 소진 상태를 계산한다.
+ * 세부예산 하나의 예산 소진 상태를 계산한다.
  * spentTotal 은 그 달의 모든 해당 지출 합이다(오늘 이후 날짜로 미리 적은 행 포함).
  * spentBeforeToday 와 spentToday 는 그 부분집합이다.
  *
