@@ -156,10 +156,10 @@ function buildMonthlyView() {
   }
   sheet.getRange(MV_ROWS.fixedStart, 1, fixedFormulas.length, 5).setFormulas(fixedFormulas);
 
-  // 블록 3 — 유동비 봉투
-  sheet.getRange(MV_ROWS.envTitle, 1).setValue('■ 유동비 봉투').setFontWeight('bold');
+  // 블록 3 — 유동비 세부예산
+  sheet.getRange(MV_ROWS.envTitle, 1).setValue('■ 유동비 세부예산').setFontWeight('bold');
   sheet.getRange(MV_ROWS.envHeader, 1, 1, 6)
-    .setValues([['봉투', '예산', '실행', '잔액', '남은 일수', '일일 가용액']]).setFontWeight('bold');
+    .setValues([['세부예산', '예산', '실행', '잔액', '남은 일수', '일일 가용액']]).setFontWeight('bold');
   var monthStart = 'DATEVALUE(' + M + '&"-01")';
   var remainingDays = 'IF(TEXT(TODAY(),"yyyy-mm")=' + M +
     ',EOMONTH(TODAY(),0)-TODAY()+1,EOMONTH(' + monthStart + ',0)-' + monthStart + '+1)';

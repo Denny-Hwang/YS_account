@@ -12,9 +12,9 @@
  */
 
 /**
- * 유동비 봉투와 월 예산(USD). 키 순서가 봇 버튼 순서다.
+ * 유동비 세부예산과 월 예산(USD). 키 순서가 봇 버튼 순서다.
  * 값은 숫자(금액)거나 {amount, carryover} 다. carryover=carry 면 남은 돈이 다음 달로 넘어간다.
- * - 예비비: 초과분을 흡수하는 봉투(Config.overspend_envelope). carry 가 자연스럽다.
+ * - 예비비: 초과분을 흡수하는 세부예산(Config.overspend_envelope). carry 가 자연스럽다.
  * - 연간비: 보험·명절·여행처럼 가끔 크게 나가는 돈을 매달 조금씩 모으는 싱킹 펀드. 반드시 carry.
  */
 var PERSONAL_ENVELOPES = {
@@ -57,7 +57,7 @@ var PERSONAL_DEBTS = [
 /** 위 값을 시트에 적용한다. */
 function applyPersonalDefaults() {
   var lines = [];
-  lines.push('봉투 ' + setEnvelopes(Object.keys(PERSONAL_ENVELOPES)) + '개');
+  lines.push('세부예산 ' + setEnvelopes(Object.keys(PERSONAL_ENVELOPES)) + '개');
   lines.push('예산 ' + applyBudgetAmounts(currentMonthStr(), PERSONAL_ENVELOPES) + '행');
   var rec = { added: 0, updated: 0 };
   PERSONAL_RECURRING.forEach(function (row) {

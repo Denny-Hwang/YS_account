@@ -76,7 +76,7 @@ test('수입 힌트는 ctx.incomeHints 로 정한다: "레슨 학생A 40"', () =
   assert.equal(parseMessage('피아노 레슨비 120', CTX).type, 'expense');
 });
 
-test('환불 힌트: 같은 봉투의 음수 지출', () => {
+test('환불 힌트: 같은 세부예산의 음수 지출', () => {
   const r = parseMessage('환불 코스트코 20', CTX);
   assert.equal(r.intent, 'record');
   assert.equal(r.type, 'expense');
@@ -109,7 +109,7 @@ test('취소 의도: "취소" / "undo"', () => {
   assert.equal(parseMessage('undo', CTX).intent, 'undo');
 });
 
-test('봉투 이동 의도', () => {
+test('세부예산 간 이동 의도', () => {
   const a = parseMessage('이동 예비비→식료품 50', CTX);
   assert.equal(a.intent, 'move');
   assert.equal(a.moveFrom, '예비비');

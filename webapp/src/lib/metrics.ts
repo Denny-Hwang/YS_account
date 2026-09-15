@@ -58,7 +58,7 @@ export function monthIncome(wb: Workbook, month: string): number {
   )
 }
 
-/** 봉투 하나의 월별 유동비 지출. */
+/** 세부예산 하나의 월별 유동비 지출. */
 export function envelopeMonthly(wb: Workbook, months: string[], envelope: string): number[] {
   return months.map((m) =>
     r2(
@@ -70,7 +70,7 @@ export function envelopeMonthly(wb: Workbook, months: string[], envelope: string
   )
 }
 
-/** 봉투별 이번 달 요약(예산·실행·잔액). */
+/** 세부예산별 이번 달 요약(예산·실행·잔액). */
 export function envelopeSummary(wb: Workbook, month: string) {
   return configList(wb.config, 'envelopes').map((envelope) => {
     const budget = budgetAmount(wb, month, envelope)

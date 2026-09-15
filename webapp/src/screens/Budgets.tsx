@@ -65,7 +65,7 @@ export function Budgets({ workbook, ctx, today, onChanged }: { workbook: Workboo
         </div>
       </Card>
 
-      <Card title="봉투별">
+      <Card title="세부예산별">
         {rows.length === 0 ? (
           <Empty>Config 탭의 envelopes 가 비어 있습니다.</Empty>
         ) : (
@@ -109,8 +109,8 @@ export function Budgets({ workbook, ctx, today, onChanged }: { workbook: Workboo
           })
         )}
         <p className="meta" style={{ marginTop: 10 }}>
-          봉투를 누르면 예산을 고칠 수 있습니다. 이월로 두면 다음 달 시작 때 남은 금액(양수만)이 더해집니다. 연간비처럼 매달 조금씩 모으는 봉투는 이월로 두세요.
-          어느 봉투든 초과한 만큼은 다음 달 {workbook.config.overspend_envelope || '예비비'} 예산에서 빠집니다.
+          세부예산을 누르면 예산을 고칠 수 있습니다. 이월로 두면 다음 달 시작 때 남은 금액(양수만)이 더해집니다. 연간비처럼 매달 조금씩 모으는 세부예산은 이월로 두세요.
+          어느 세부예산이든 초과한 만큼은 다음 달 {workbook.config.overspend_envelope || '예비비'} 예산에서 빠집니다.
         </p>
       </Card>
     </div>

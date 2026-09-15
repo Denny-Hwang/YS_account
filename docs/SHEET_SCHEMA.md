@@ -13,7 +13,8 @@
 | type | `income` \| `expense` \| `transfer` (저축 이동) |
 | kind | `fixed` \| `variable` |
 | category | 카테고리(주거비, 식료품, 외식, 교육비 …) |
-| envelope | 유동비 봉투 이름(Config.envelopes 중 하나). 고정비·수입·저축은 빈값 |
+| envelope | 유동비 세부예산 이름(Config.envelopes 중 하나). 고정비·수입·저축은 빈값 |
+
 | merchant | 가맹점/상대 텍스트 |
 | amount | 원래 통화 금액. **환불은 음수** |
 | currency | `USD` \| `KRW` |
@@ -28,6 +29,19 @@
 | updated_by | 마지막 수정자 |
 
 헤더 순서: `id, date, type, kind, category, envelope, merchant, amount, currency, amount_usd, recurring_id, status, memo, payer, source, created_at, updated_at, updated_by`
+
+### 세부예산과 카테고리
+
+두 열이 하는 일이 다르다.
+
+| 열 | 부르는 이름 | 하는 일 |
+|---|---|---|
+| `envelope` | 세부예산 | 예산이 붙는 유동비 단위. 하루치·신호등·예산 화면이 이 열만 본다 |
+| `category` | 카테고리 | 분류. 리포트에서 묶어 보는 데 쓴다. 고정비(주거비·통신비 …)도 여기에 들어간다 |
+
+웹앱은 이 둘을 **한 칸**으로 보여 준다. 고른 이름이 `Config.envelopes` 에 있으면 두 열에 함께 쓰고,
+없으면 `category` 에만 쓰고 `envelope` 은 비운다(`webapp/src/lib/ledger.ts` 의 `categoryFields`).
+그래서 통신비를 골라도 유동비 예산이 흔들리지 않는다.
 
 ### status 다섯 가지
 
@@ -100,20 +114,20 @@
 - `kind=variable`: 예약 행을 만들지 않는다. 건별 기록에 `recurring_id` 만 남아 합산된다(레슨 수입).
 - `type=transfer`(저축): 고정비처럼 예정→확정으로 다루되 수입·지출 합계에 넣지 않는다. Today 화면의 "이달 저축" 이 이것이다.
 
-## Budgets (월별 봉투 예산)
+## Budgets (월별 세부예산 예산)
 
 | 열 | 설명 |
 |---|---|
 | month | YYYY-MM |
-| envelope | 봉투 이름 |
+| envelope | 세부예산 이름 |
 | amount | 그 달 예산(USD) |
 | carryover | `reset` \| `carry` (월말 잔액 처리) |
 
 헤더 순서: `month, envelope, amount, carryover`
 
 월 시작 규칙(`LedgerRules.nextMonthBudgets`):
-- `carry` 봉투는 전월 **양수** 잔액을 더한다. 음수는 더하지 않는다. 연간비 같은 싱킹 펀드는 `carry` 로 둔다.
-- 어느 봉투든 전월 초과분(음수 잔액)의 합은 `Config.overspend_envelope`(기본 예비비)의 이번 달 금액에서 뺀다.
+- `carry` 세부예산은 전월 **양수** 잔액을 더한다. 음수는 더하지 않는다. 연간비 같은 싱킹 펀드는 `carry` 로 둔다.
+- 어느 세부예산이든 전월 초과분(음수 잔액)의 합은 `Config.overspend_envelope`(기본 예비비)의 이번 달 금액에서 뺀다.
   식료품 예산을 생활 가능선 아래로 깎지 않으면서 초과가 공짜가 되지도 않게 하기 위해서다.
 - 봇 명령 `이동 예비비→식료품 50` 과 빨강 회신의 버튼은 이번 달 두 행의 `amount` 를 옮긴다.
 
@@ -125,7 +139,7 @@
 | type | `income` \| `expense` \| `transfer` |
 | kind | `fixed` \| `variable` |
 | category | 카테고리 |
-| envelope | 봉투 |
+| envelope | 세부예산 |
 | recurring_id | 고정 항목이면 Recurring.id |
 | hit_count | 매칭 횟수 |
 | last_used | 마지막 매칭 일시 |
@@ -169,7 +183,7 @@
 | title | 목표 이름 |
 | target_amount | 목표 금액 |
 | deadline | YYYY-MM-DD |
-| linked_envelope | 연결 봉투(선택) |
+| linked_envelope | 연결 세부예산(선택) |
 | notes | 메모 |
 
 헤더 순서: `id, horizon, title, target_amount, deadline, linked_envelope, notes`
@@ -190,13 +204,14 @@
 | key | 기본값 | 설명 |
 |---|---|---|
 | fx_usd_krw | 1332 | KRW → USD 환산에 쓰는 환율 |
-| envelopes | 식료품,생필품,예비비 | 유동비 봉투 목록(콤마 구분). 외식은 식료품 봉투에 넣되 카테고리는 `외식` |
+| envelopes | 식료품,생필품,예비비 | 유동비 세부예산 목록(콤마 구분). 외식은 식료품 세부예산에 넣되 카테고리는 `외식` |
+| categories | 주거비,통신비,… | 예산이 붙지 않는 분류를 웹앱 목록에 미리 띄운다. 비워도 실제로 쓰인 분류는 저절로 오른다 |
 | default_currency | USD | 통화 표기 없을 때 기본 통화 |
 | timezone | America/Los_Angeles | 날짜 계산 기준 시간대. `appsscript.json` 의 timeZone 과 같아야 한다 |
 | allowed_telegram_ids | (빈값) | 허용 Telegram user id(콤마 구분). 저장소에는 쓰지 않는다 |
 | daily_summary_hour | 7 | 아침 요약 전송 시각(0~23) |
 | income_hints | 수입,급여,입금 | 이 낱말이 있으면 수입으로 본다. 레슨 수입이 있으면 `레슨` 을 더한다 |
-| overspend_envelope | 예비비 | 전월 초과분을 흡수하고, 빨강 회신 때 "여기서 옮기기" 버튼의 출처가 되는 봉투 |
+| overspend_envelope | 예비비 | 전월 초과분을 흡수하고, 빨강 회신 때 "여기서 옮기기" 버튼의 출처가 되는 세부예산 |
 | emergency_fund_months | 3 | 비상금 목표 = 활성 고정비 월 합 × 이 값 |
 | weekly_digest_day | 0 | 주간 결산을 보내는 요일. 0=일요일 … 6=토요일 |
 | name_<telegram_id> | (선택) | 원장의 `payer` 에 넣을 사람 이름 |

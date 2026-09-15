@@ -5,7 +5,7 @@ import { classify } from '@shared/Classifier.js'
 import { matchRecurringName } from '@shared/LedgerRules.js'
 import { Bullet, MonthlyBars, Stat } from '../components/Charts'
 import { Card, Empty, Notice } from '../components/Ui'
-import { budgetAmount, configList, configNumber, monthTransactions, recordParsed, type Workbook } from '../lib/ledger'
+import { budgetAmount, categoryOptions, configList, configNumber, monthTransactions, recordParsed, type Workbook } from '../lib/ledger'
 import { emergencyFund, recentDaily, savingsPlan } from '../lib/metrics'
 import type { SheetsContext } from '../lib/sheets'
 
@@ -21,11 +21,17 @@ export function Today({
   onChanged: () => void
 }) {
   const [quick, setQuick] = useState('')
+  // 자세히 칸은 기본으로 접혀 있다. 평소에는 한 줄 입력만으로 지금까지처럼 기록된다.
+  const [detail, setDetail] = useState(false)
+  const [date, setDate] = useState('')
+  const [category, setCategory] = useState('')
+  const [type, setType] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null)
 
   const month = today.slice(0, 7)
   const envelopes = configList(workbook.config, 'envelopes')
+  const options = categoryOptions(workbook)
   const fx = configNumber(workbook.config, 'fx_usd_krw', 1332)
   const transactions = useMemo(() => monthTransactions(workbook, month), [workbook, month])
 
@@ -75,8 +81,12 @@ export function Today({
         const def = matchRecurringName(parsed.merchantTextRaw || parsed.merchantText, workbook.recurring as unknown as Array<Record<string, unknown>>)
         if (def) hit = { recurring_id: def.id, type: def.type, kind: def.kind, category: def.category, envelope: '' }
       }
-      const result = await recordParsed(ctx, workbook, parsed, hit, 'web')
+      const result = await recordParsed(ctx, workbook, parsed, hit, 'web', { date, category, type })
       setQuick('')
+      // 고른 값은 한 건에만 쓴다. 다음 입력이 지난 선택을 물려받으면 조용히 틀린 기록이 쌓인다.
+      setDate('')
+      setCategory('')
+      setType('')
       const amount = formatUsd(Math.abs(Number(parsed.amount_usd)))
       setMessage({
         kind: 'info',
@@ -107,19 +117,73 @@ export function Today({
             tone={leftTotal < 0 ? 'bad' : undefined}
             sub={`하루치 ${formatUsd(allowanceTotal)} · 남은 ${remainingDays}일${spentTodayTotal !== 0 ? ` · 오늘 ${formatUsd(spentTodayTotal)} 씀` : ''}`}
           />
-          <Stat label="이달 남은 유동비" value={formatUsd(remainingTotal)} size="md" sub={`봉투 ${statuses.length}개 합산`} />
+          <Stat label="이달 남은 유동비" value={formatUsd(remainingTotal)} size="md" sub={`세부예산 ${statuses.length}개 합산`} />
         </div>
-        <form onSubmit={submitQuick} className="row" style={{ marginTop: 14 }}>
-          <input className="grow" value={quick} onChange={(e) => setQuick(e.target.value)} placeholder="코스트코 85.89 · 환불 코스트코 20" enterKeyHint="done" autoComplete="off" />
-          <button className="primary" type="submit" disabled={busy || !quick.trim()}>
-            {busy ? '기록 중' : '기록'}
-          </button>
+        <form onSubmit={submitQuick} style={{ marginTop: 14 }}>
+          <div className="row">
+            <input className="grow" value={quick} onChange={(e) => setQuick(e.target.value)} placeholder="코스트코 85.89 · 환불 코스트코 20" enterKeyHint="done" autoComplete="off" />
+            <button className="primary" type="submit" disabled={busy || !quick.trim()}>
+              {busy ? '기록 중' : '기록'}
+            </button>
+          </div>
+          <div className="row controls" style={{ marginTop: 8 }}>
+            <button
+              className="ghost"
+              type="button"
+              aria-expanded={detail}
+              onClick={() => setDetail((d) => !d)}
+              style={{ padding: '2px 10px' }}
+            >
+              {detail ? '자세히 닫기' : '자세히'}
+            </button>
+            {!detail && <span className="meta">날짜·세부예산·유형을 직접 고르려면 누르세요</span>}
+          </div>
+          {detail && (
+            <>
+              <div className="row controls" style={{ marginTop: 8 }}>
+                <div className="grow">
+                  <label>날짜</label>
+                  <input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} />
+                </div>
+                <div className="grow">
+                  <label>유형</label>
+                  <select value={type} onChange={(e) => setType(e.target.value)}>
+                    <option value="">(자동)</option>
+                    <option value="expense">지출</option>
+                    <option value="income">수입</option>
+                    <option value="transfer">저축</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <label>세부예산</label>
+                <select value={category} onChange={(e) => setCategory(e.target.value)}>
+                  <option value="">(자동 분류)</option>
+                  <optgroup label="유동비 세부예산">
+                    {options.filter((o) => o.budgeted).map((o) => (
+                      <option key={o.name} value={o.name}>{o.name}</option>
+                    ))}
+                  </optgroup>
+                  {options.some((o) => !o.budgeted) && (
+                    <optgroup label="그 밖의 분류">
+                      {options.filter((o) => !o.budgeted).map((o) => (
+                        <option key={o.name} value={o.name}>{o.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+              <p className="meta" style={{ margin: '6px 0 0' }}>
+                비워 두면 지금까지처럼 문장에서 알아서 읽습니다. 고른 값이 있으면 그쪽이 우선입니다.
+              </p>
+            </>
+          )}
         </form>
       </Card>
 
-      <Card title="봉투별 진행">
+      <Card title="세부예산별 진행">
         {statuses.length === 0 ? (
-          <Empty>Config 탭의 envelopes 가 비어 있습니다.</Empty>
+          <Empty>Config 탭의 envelopes 가 비어 있습니다. 여기에 적은 것이 유동비 세부예산이 됩니다.</Empty>
         ) : (
           statuses.map(({ envelope, status }) => (
             <Bullet
@@ -138,7 +202,7 @@ export function Today({
           ))
         )}
         <p className="meta" style={{ marginTop: 10 }}>
-          🟢 계획 안 · 🟡 계획보다 앞서 씀(예산의 10% 이내) · 🔴 그 이상 또는 봉투 초과. 회색 트랙이 예산, 색 막대가 실제, 검은 눈금이 오늘까지의 계획 진도입니다.
+          🟢 계획 안 · 🟡 계획보다 앞서 씀(예산의 10% 이내) · 🔴 그 이상 또는 예산 초과. 회색 트랙이 예산, 색 막대가 실제, 검은 눈금이 오늘까지의 계획 진도입니다.
         </p>
       </Card>
 

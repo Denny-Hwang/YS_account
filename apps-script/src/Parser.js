@@ -6,7 +6,7 @@
 /** 수입 힌트 토큰 기본값. ctx.incomeHints 로 바꿀 수 있다(Config.income_hints). */
 var INCOME_HINTS = ['수입', '급여', '입금'];
 
-/** 환불 힌트 토큰. 하나라도 있으면 같은 봉투의 음수 지출로 기록한다. */
+/** 환불 힌트 토큰. 하나라도 있으면 같은 세부예산의 음수 지출로 기록한다. */
 var REFUND_HINTS = ['환불', '반품'];
 
 /** 금액 토큰. 천 단위 콤마 형태를 먼저 시도하고, 없으면 소수점(.,) 형태를 본다. */
@@ -229,7 +229,7 @@ function stripHints(text, hints) {
 }
 
 /**
- * 봉투 간 예산 이동 의도를 읽는다.
+ * 세부예산 간 예산 이동 의도를 읽는다.
  * "이동 예비비→식료품 50", "이동 예비비 -> 식료품 50", "예비비에서 식료품으로 50 이동"
  * @return {?{from: string, to: string, amountText: string}}
  */
@@ -281,7 +281,7 @@ function parseMessage(text, ctx) {
     confidence: 'high'
   };
 
-  // 봉투 간 이동은 금액 파싱보다 먼저 본다. "이동 예비비→식료품 50" 의 50 은 지출이 아니다.
+  // 세부예산 간 이동은 금액 파싱보다 먼저 본다. "이동 예비비→식료품 50" 의 50 은 지출이 아니다.
   var move = extractMove(raw);
   if (move) {
     var moveAmt = extractAmounts(move.amountText, defaultCurrency);

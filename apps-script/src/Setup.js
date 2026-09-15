@@ -246,7 +246,7 @@ function seedBudgets(month) {
       existing[String(r.envelope).trim()] = true;
     }
   });
-  // 초과분을 흡수하는 봉투(예비비)는 남은 돈을 다음 달로 넘기는 편이 자연스러워 carry 로 시작한다.
+  // 초과분을 흡수하는 세부예산(예비비)는 남은 돈을 다음 달로 넘기는 편이 자연스러워 carry 로 시작한다.
   var overspend = getConfig('overspend_envelope', '');
   var toAdd = getConfigList('envelopes')
     .filter(function (env) { return !existing[env]; })
@@ -258,13 +258,13 @@ function seedBudgets(month) {
 }
 
 /**
- * 봉투 목록을 바꾼다. Config.envelopes 를 쓰고 드롭다운을 다시 건다.
+ * 세부예산 목록을 바꾼다. Config.envelopes 를 쓰고 드롭다운을 다시 건다.
  * @param {!Array<string>} names
  */
 function setEnvelopes(names) {
   var list = (names || []).map(function (n) { return String(n).trim(); }).filter(Boolean);
   if (!list.length) {
-    throw new Error('setEnvelopes: 봉투가 비어 있습니다.');
+    throw new Error('setEnvelopes: 세부예산이 비어 있습니다.');
   }
   setConfig('envelopes', list.join(','));
   applyValidations();
@@ -272,10 +272,10 @@ function setEnvelopes(names) {
 }
 
 /**
- * 해당 월의 봉투 예산을 정한다. 값은 숫자(금액만) 또는 {amount, carryover} 다.
+ * 해당 월의 세부예산 예산을 정한다. 값은 숫자(금액만) 또는 {amount, carryover} 다.
  * 행이 있으면 amount 를 바꾸고 carryover 는 준 경우에만 바꾼다. 없으면 추가한다.
  * @param {string} month 'YYYY-MM'
- * @param {!Object<string, (number|{amount: number, carryover: string})>} amounts 봉투 → 값
+ * @param {!Object<string, (number|{amount: number, carryover: string})>} amounts 세부예산 → 값
  * @return {number} 손댄 행 수
  */
 function applyBudgetAmounts(month, amounts) {

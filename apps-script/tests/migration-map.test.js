@@ -6,7 +6,7 @@ const {
 
 const MAP = {
   date: '날짜', merchant: '내역', amount: '금액', category: '분류',
-  envelope: '봉투', memo: '메모', type: '구분', payer: '결제자'
+  envelope: '세부예산', memo: '메모', type: '구분', payer: '결제자'
 };
 const CTX = {
   tabName: '2025-01', rowNumber: 7, month: '2025-01',
@@ -46,7 +46,7 @@ test('행 id 는 탭과 행 번호로 결정된다', () => {
 
 test('일반 지출 행을 옮긴다', () => {
   const r = buildTransactionFromRow(
-    { 날짜: '1/5', 내역: '코스트코', 금액: '85.89', 분류: '식료품', 봉투: '식료품', 메모: '', 구분: '', 결제자: '기록자' },
+    { 날짜: '1/5', 내역: '코스트코', 금액: '85.89', 분류: '식료품', 세부예산: '식료품', 메모: '', 구분: '', 결제자: '기록자' },
     MAP, CTX
   );
   assert.equal(r.status, 'ok');
@@ -59,9 +59,9 @@ test('일반 지출 행을 옮긴다', () => {
   });
 });
 
-test('봉투가 비면 기본 봉투를 채운다', () => {
+test('세부예산이 비면 기본 세부예산을 채운다', () => {
   const r = buildTransactionFromRow(
-    { 날짜: '3', 내역: '편의점', 금액: '12.00', 분류: '', 봉투: '' }, MAP, CTX
+    { 날짜: '3', 내역: '편의점', 금액: '12.00', 분류: '', 세부예산: '' }, MAP, CTX
   );
   assert.equal(r.transaction.envelope, '기타');
 });

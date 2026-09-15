@@ -248,14 +248,14 @@ function undoPlan(row, memo, fallbackExpected) {
 }
 
 /**
- * 다음 달 봉투 예산을 정한다.
- * - carry 봉투: 남은 금액이 양수면 더한다. 음수는 더하지 않는다.
- * - reset 봉투: 이번 달 금액 그대로.
- * - 모든 봉투의 초과분(음수 잔액) 합은 overspendEnvelope 의 다음 달 금액에서 뺀다.
+ * 다음 달 세부예산 예산을 정한다.
+ * - carry 세부예산: 남은 금액이 양수면 더한다. 음수는 더하지 않는다.
+ * - reset 세부예산: 이번 달 금액 그대로.
+ * - 모든 세부예산의 초과분(음수 잔액) 합은 overspendEnvelope 의 다음 달 금액에서 뺀다.
  *   식료품 예산을 생활 가능선 아래로 깎지 않으면서, 초과가 공짜가 되지도 않게 한다.
  * @param {!Array<{envelope: string, amount: number, carryover: string}>} prevBudgets 전월 Budgets 행
  * @param {!Object<string, {remaining: number}>} statusByEnvelope 전월 말일 기준 envelopeStatus
- * @param {string} overspendEnvelope 초과분을 흡수할 봉투 이름(없으면 흡수하지 않는다)
+ * @param {string} overspendEnvelope 초과분을 흡수할 세부예산 이름(없으면 흡수하지 않는다)
  * @return {!Array<{envelope: string, amount: number, carryover: string, note: string}>}
  */
 function nextMonthBudgets(prevBudgets, statusByEnvelope, overspendEnvelope) {
@@ -275,7 +275,7 @@ function nextMonthBudgets(prevBudgets, statusByEnvelope, overspendEnvelope) {
     var note = '';
     if (remaining < 0 && envelope !== absorb) {
       deficit += -remaining;
-      note = '초과 ' + rulesRound(-remaining) + ' → ' + (absorb || '(흡수 봉투 없음)');
+      note = '초과 ' + rulesRound(-remaining) + ' → ' + (absorb || '(흡수 세부예산 없음)');
     }
     if (carryover === 'carry' && remaining > 0) {
       amount = rulesRound(amount + remaining);
@@ -342,7 +342,7 @@ function payoffMonths(principal, ratePct, payment) {
 }
 
 /**
- * 월 마감 점수 세 개. 저축률, 예산 안에 든 봉투 수, 고정비 편차 건수.
+ * 월 마감 점수 세 개. 저축률, 예산 안에 든 세부예산 수, 고정비 편차 건수.
  * @param {{income: number, expense: number}} totals
  * @param {!Array<!Object>} envelopeStatuses
  * @param {number} deviationCount

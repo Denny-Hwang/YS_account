@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react'
 import { formatUsd } from '@shared/Budget.js'
+import { initialRecurringStatus } from '@shared/LedgerRules.js'
 import { MonthCalendar, MonthSummary } from '../components/Calendar'
 import { Card, Empty, Field, Notice, Sheet } from '../components/Ui'
 import {
   availableMonths,
-  configList,
+  categoryFields,
+  categoryOptions,
+  categoryOf,
   monthTransactions,
   patchTransaction,
   softDeleteTransaction,
@@ -15,6 +18,22 @@ import {
 import type { SheetsContext } from '../lib/sheets'
 
 const VIEW_KEY = 'family-budget.ledger-view.v1'
+
+/**
+ * 지운 행을 되살릴 때 돌려놓을 상태.
+ * 지운 직후라면 화면이 원래 상태를 기억하고 있어 그대로 쓰지만, 한참 뒤에 되살리는 경우는
+ * 기억이 없다. 고정 항목이면 그 정의의 예약 상태로, 그 밖에는 보통 기록(active)으로 돌린다.
+ * confirmed 였는지까지는 알 수 없으므로 실제 금액은 다시 확정해야 한다.
+ */
+function restoreStatusOf(workbook: Workbook, row: SheetRow): string {
+  const id = String(row.recurring_id ?? '').trim()
+  if (!id) return 'active'
+  const def = workbook.recurring.find((r) => String(r.id).trim() === id)
+  return def ? initialRecurringStatus(def as Record<string, unknown>) : 'active'
+}
+
+/** 세부예산 목록의 "직접 입력" 항목 값. 실제 이름과 겹치지 않게 둔다. */
+const NEW_CATEGORY = '\u0000new'
 
 /** 마지막으로 고른 보기 방식. 저장이 막혀 있어도(프라이빗 모드) 목록으로 연다. */
 function readView(): 'list' | 'calendar' {
@@ -45,7 +64,19 @@ export function LedgerScreen({
   const [day, setDay] = useState<string | null>(null)
   const [showDeleted, setShowDeleted] = useState(false)
   const [editing, setEditing] = useState<SheetRow | null>(null)
+  const [undo, setUndo] = useState<{ row: SheetRow; previousStatus: string; label: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  async function restore() {
+    if (!undo) return
+    try {
+      await patchTransaction(ctx, workbook, undo.row, { status: undo.previousStatus, updated_by: 'web' })
+      setUndo(null)
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   const monthRows = useMemo(() => monthTransactions(workbook, month), [workbook, month])
 
@@ -68,6 +99,19 @@ export function LedgerScreen({
   return (
     <>
       {error && <Notice kind="error">{error}</Notice>}
+      {undo && (
+        <Notice kind="info">
+          <span className="row" style={{ gap: 10 }}>
+            <span className="grow">{undo.label} 삭제했습니다.</span>
+            <button className="ghost" style={{ padding: '2px 10px' }} onClick={() => void restore()}>
+              되돌리기
+            </button>
+            <button className="ghost" style={{ padding: '2px 10px' }} onClick={() => setUndo(null)}>
+              닫기
+            </button>
+          </span>
+        </Notice>
+      )}
 
       <Card>
         <div className="row controls">
@@ -138,7 +182,7 @@ export function LedgerScreen({
                 <span className="grow ellipsis">
                   {String(row.merchant) || '(이름 없음)'}
                   <br />
-                  <span className="pill">{String(row.envelope || row.category || row.kind)}</span>
+                  <span className="pill">{categoryOf(row) || String(row.kind)}</span>
                   {badge && <span className={`pill pill-${badge.tone}`}>{badge.label}</span>}
                 </span>
                 <span className={`amount${income ? ' income' : ''}${badge && badge.tone !== 'deleted' ? ' pending' : ''}`}>
@@ -158,6 +202,13 @@ export function LedgerScreen({
           ctx={ctx}
           onClose={() => setEditing(null)}
           onError={setError}
+          onDeleted={(row, previousStatus) =>
+            setUndo({
+              row,
+              previousStatus,
+              label: `${String(row.merchant) || '(이름 없음)'} ${formatUsd(Number(row.amount_usd) || 0)}`,
+            })
+          }
           onChanged={() => {
             setEditing(null)
             onChanged()
@@ -175,6 +226,7 @@ function EditSheet({
   onClose,
   onChanged,
   onError,
+  onDeleted,
 }: {
   row: SheetRow
   workbook: Workbook
@@ -182,8 +234,13 @@ function EditSheet({
   onClose: () => void
   onChanged: () => void
   onError: (m: string) => void
+  onDeleted: (row: SheetRow, previousStatus: string) => void
 }) {
-  const envelopes = configList(workbook.config, 'envelopes')
+  const options = categoryOptions(workbook)
+  // 시트의 envelope 과 category 를 화면에서는 한 칸으로 다룬다. envelope 이 있으면 그것이 세부예산이다.
+  const current = String(row.envelope ?? '').trim() || String(row.category ?? '').trim()
+  const known = options.some((o) => o.name === current)
+  const [freeform, setFreeform] = useState(current !== '' && !known)
   const [form, setForm] = useState({
     date: String(row.date).slice(0, 10),
     merchant: String(row.merchant ?? ''),
@@ -191,8 +248,7 @@ function EditSheet({
     currency: String(row.currency || 'USD'),
     type: String(row.type || 'expense'),
     kind: String(row.kind || 'variable'),
-    category: String(row.category ?? ''),
-    envelope: String(row.envelope ?? ''),
+    category: current,
     memo: String(row.memo ?? ''),
   })
   const [busy, setBusy] = useState(false)
@@ -213,6 +269,7 @@ function EditSheet({
         form.currency === 'KRW' ? Math.round((amount / fx) * 100) / 100 : Math.round(amount * 100) / 100
       await patchTransaction(ctx, workbook, row, {
         ...form,
+        ...categoryFields(workbook, form.category), // category 와 envelope 을 함께 채운다
         amount,
         amount_usd: amountUsd,
         updated_by: 'web',
@@ -230,9 +287,12 @@ function EditSheet({
     setBusy(true)
     try {
       if (deleted) {
-        await patchTransaction(ctx, workbook, row, { status: 'active', updated_by: 'web' })
+        await patchTransaction(ctx, workbook, row, { status: restoreStatusOf(workbook, row), updated_by: 'web' })
       } else {
+        const before = String(row.status).trim() || 'active'
         await softDeleteTransaction(ctx, workbook, row, 'web')
+        // 지운 직후 되돌릴 수 있게 원래 상태를 위로 넘긴다. 실수로 지웠을 때 한 번에 복구된다.
+        onDeleted(row, before)
       }
       onChanged()
     } catch (err) {
@@ -290,19 +350,55 @@ function EditSheet({
           </select>
         </div>
       </div>
-      <Field label="봉투">
-        <select value={form.envelope} onChange={(e) => set('envelope', e.target.value)}>
-          <option value="">(없음)</option>
-          {envelopes.map((env) => (
-            <option key={env} value={env}>
-              {env}
-            </option>
-          ))}
-        </select>
+      <Field label="세부예산">
+        {freeform ? (
+          <div className="row">
+            <input
+              className="grow"
+              value={form.category}
+              onChange={(e) => set('category', e.target.value)}
+              placeholder="새 세부예산 이름"
+            />
+            <button className="ghost" type="button" onClick={() => setFreeform(false)}>
+              목록에서
+            </button>
+          </div>
+        ) : (
+          <select
+            value={form.category}
+            onChange={(e) => {
+              if (e.target.value === NEW_CATEGORY) {
+                set('category', '')
+                setFreeform(true)
+                return
+              }
+              set('category', e.target.value)
+            }}
+          >
+            <option value="">(없음)</option>
+            <optgroup label="유동비 세부예산">
+              {options.filter((o) => o.budgeted).map((o) => (
+                <option key={o.name} value={o.name}>
+                  {o.name}
+                </option>
+              ))}
+            </optgroup>
+            {options.some((o) => !o.budgeted) && (
+              <optgroup label="그 밖의 분류">
+                {options.filter((o) => !o.budgeted).map((o) => (
+                  <option key={o.name} value={o.name}>
+                    {o.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <option value={NEW_CATEGORY}>+ 직접 입력</option>
+          </select>
+        )}
       </Field>
-      <Field label="카테고리">
-        <input value={form.category} onChange={(e) => set('category', e.target.value)} />
-      </Field>
+      <p className="meta" style={{ margin: '4px 0 0' }}>
+        유동비 세부예산만 하루치·신호등 계산에 들어갑니다. 그 밖의 분류는 기록만 남습니다.
+      </p>
       <Field label="메모">
         <input value={form.memo} onChange={(e) => set('memo', e.target.value)} />
       </Field>

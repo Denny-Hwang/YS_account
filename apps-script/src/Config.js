@@ -82,6 +82,9 @@ var SHEETS = {
 var CONFIG_DEFAULTS = [
   ['fx_usd_krw', '1332'],
   ['envelopes', '식료품,생필품,예비비'],
+  // 예산이 붙지 않는 분류까지 웹앱 세부예산 목록에 미리 띄우고 싶을 때 적는다.
+  // 비워 두면 Recurring·Merchants·기존 기록에서 쓰인 분류가 저절로 목록에 오른다.
+  ['categories', '주거비,통신비,외식,유류비,보험,구독,부채상환,기부,저축,급여,교육비,의료비'],
   ['default_currency', 'USD'],
   ['timezone', 'America/Los_Angeles'],
   ['allowed_telegram_ids', ''],

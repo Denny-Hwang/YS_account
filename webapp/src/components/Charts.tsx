@@ -351,7 +351,7 @@ export function LineChart({
   )
 }
 
-/** 작은 다중 차트. 봉투별 월 추이처럼 같은 형태를 나란히 비교할 때. */
+/** 작은 다중 차트. 세부예산별 월 추이처럼 같은 형태를 나란히 비교할 때. */
 export function SmallMultiples({
   items,
   months,
@@ -384,7 +384,7 @@ export function SmallMultiples({
         )
       })}
       {items.some((it) => it.target) && (
-        <p className="meta" style={{ gridColumn: '1 / -1' }}>회색 선은 그 봉투의 이번 달 예산입니다.</p>
+        <p className="meta" style={{ gridColumn: '1 / -1' }}>회색 선은 그 세부예산의 이번 달 예산입니다.</p>
       )}
     </div>
   )
