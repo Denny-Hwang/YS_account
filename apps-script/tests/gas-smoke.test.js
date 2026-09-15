@@ -78,11 +78,18 @@ function buildContext(options) {
     },
     UrlFetchApp: {
       fetch: (url, opt) => {
+        if (opt && opt.followRedirects === false) {
+          return {
+            getResponseCode: () => (options && options.probeStatus) || 200,
+            getContentText: () => 'ok',
+            getAllHeaders: () => ((options && options.probeHeaders) || {})
+          };
+        }
         const method = url.split('/').pop();
         const payload = JSON.parse(opt.payload || '{}');
         sent.push({ method, payload });
         const result = method === 'sendMessage' ? { message_id: sent.length } : true;
-        return { getResponseCode: () => 200, getContentText: () => JSON.stringify({ ok: true, result }) };
+        return { getResponseCode: () => 200, getContentText: () => JSON.stringify({ ok: true, result }), getAllHeaders: () => ({}) };
       }
     },
     ScriptApp: { getProjectTriggers: () => [], newTrigger: () => ({ timeBased() { return this; }, everyDays() { return this; }, atHour() { return this; }, onMonthDay() { return this; }, create() {} }) },
@@ -437,4 +444,29 @@ test('resyncReservedStatuses 는 기존 예약 행을 지금 기준으로 맞춘
   assert.equal(ctx.resyncReservedStatuses('2026-09').toExpected, 1);
   ctx.invalidateReadCache();
   assert.equal(ctx.monthTotals('2026-09').expense, 230);
+});
+
+test('probeWebappUrl 은 배포 URL 상태를 읽고 비밀값을 감춘다', () => {
+  const ctx = fresh();
+  const printed = [];
+  ctx.Logger.log = (s) => printed.push(String(s));
+  ctx.PropertiesService.getScriptProperties().setProperty('WEBAPP_URL',
+    'https://script.google.com/macros/s/demo-deploy-id-abcdef/exec');
+
+  assert.equal(ctx.probeWebappUrl(), 200);
+  const out = printed.join('\n');
+  assert.match(out, /HTTP 200/);
+  assert.match(out, /setWebhook 을 다시 실행하세요/);
+  assert.ok(!/secret/.test(out), 'WEBHOOK_SECRET 값이 찍히면 안 된다');
+
+  // 리디렉션 목적지에 따라 다른 조치를 안내한다
+  const probe = buildContext({ now: '2026-09-13T20:00:00Z', probeStatus: 302, probeHeaders: { Location: 'https://accounts.google.com/signin?x=1' } });
+  probe.setupSheet();
+  probe.PropertiesService.getScriptProperties().setProperty('WEBAPP_URL',
+    'https://script.google.com/macros/s/demo-deploy-id-abcdef/exec');
+  const lines = [];
+  probe.Logger.log = (s) => lines.push(String(s));
+  assert.equal(probe.probeWebappUrl(), 302);
+  assert.match(lines.join('\n'), /액세스 권한.*모든 사용자/s);
+  assert.ok(!/signin\?x=1/.test(lines.join('\n')), '이동 주소 전체가 아니라 도메인만 찍는다');
 });

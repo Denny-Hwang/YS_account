@@ -128,6 +128,14 @@ Apps Script 편집기 → 우상단 `배포` → `새 배포` → 유형 `웹 �
 ### 문제가 생기면
 **먼저 `Telegram.gs` 의 `diagnoseWebhook` 을 실행한다.** 실행 로그에 원인 후보가 한 번에 나온다.
 비밀값은 가려서 찍으므로 결과를 그대로 복사해도 된다.
+`마지막 오류` 에 `302 Found` 가 보이면 이어서 `Telegram.gs` 의 `probeWebappUrl` 을 실행한다.
+배포 URL 을 Telegram 과 같은 조건(리디렉션 미추적)으로 직접 두드려 실제 상태 코드를 알려 준다.
+
+| `probeWebappUrl` 결과 | 뜻 | 조치 |
+|---|---|---|
+| `HTTP 200` | 웹 앱은 정상. 등록된 웹훅이 예전 배포를 봄 | `setWebhook` 재실행 |
+| `HTTP 302` + `accounts.google.com` | 배포가 로그인을 요구함 | 액세스 권한을 "모든 사용자" 로 바꾸고 새 버전 배포 |
+| `HTTP 302` + `googleusercontent.com` | 배포 설정 문제가 아님 | `setWebhook` 으로 밀린 건을 비운다 |
 
 - **회신이 올 때도 있고 안 올 때도 있다** → `Log` 탭 꼬리를 보고 셋 중 어디인지 가른다.
   1. `수신` 줄이 있고 회신만 없다 → 회신 쪽 문제다. 같은 줄 근처의 `tg:sendMessage` 오류를 본다.
@@ -538,6 +546,7 @@ Apps Script 편집기 왼쪽 파일 목록에서 파일을 고른 뒤, 상단 �
 | `setWebhook` | `Telegram.gs` | 웹훅 등록. 웹 앱 배포 후 실행 |
 | `getWebhookInfo` | `Telegram.gs` | 웹훅 상태와 마지막 오류 확인 |
 | `diagnoseWebhook` | `Telegram.gs` | 회신이 안 올 때 원인 후보를 한 번에 진단 |
+| `probeWebappUrl` | `Telegram.gs` | 배포 URL 을 직접 두드려 실제 상태 코드 확인 |
 | `deleteWebhook` | `Telegram.gs` | 웹훅 해제 |
 
 ### 트리거와 정기 작업

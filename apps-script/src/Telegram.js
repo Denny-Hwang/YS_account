@@ -211,6 +211,77 @@ function diagnoseWebhook() {
   return info;
 }
 
+/**
+ * 배포 URL 을 직접 두드려 실제 상태 코드를 본다.
+ * getWebhookInfo 의 "302 Found" 가 배포 설정 탓인지 Apps Script 의 정상 동작인지 가른다.
+ *
+ * 보내는 내용은 message 도 callback 도 없는 빈 update 다. 토큰 검사와 doPost 진입까지만
+ * 확인하고 원장에는 아무것도 쓰지 않는다(Log 에 "[무시]" 한 줄만 남는다).
+ * @return {?number} 상태 코드. 확인할 수 없으면 null
+ */
+function probeWebappUrl() {
+  var base = optionalSecret('WEBAPP_URL');
+  var secret = optionalSecret('WEBHOOK_SECRET');
+  if (!base || !secret) {
+    Logger.log('WEBAPP_URL 또는 WEBHOOK_SECRET 이 없습니다. Script Properties 를 확인하세요.');
+    return null;
+  }
+  var url = base + (base.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(secret);
+  var response;
+  try {
+    response = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({ update_id: 'probe-' + new Date().getTime() }),
+      followRedirects: false, // Telegram 도 리디렉션을 따라가지 않는다. 같은 조건으로 본다
+      muteHttpExceptions: true
+    });
+  } catch (err) {
+    Logger.log('배포 URL 호출 실패: ' + err);
+    return null;
+  }
+
+  var code = response.getResponseCode();
+  var location = '';
+  try {
+    var headers = response.getAllHeaders() || {};
+    location = String(headers.Location || headers.location || '');
+  } catch (ignored) {
+    location = '';
+  }
+
+  var lines = ['── 배포 URL 응답 ──', 'HTTP ' + code];
+  if (code === 200) {
+    lines.push('곧바로 200 입니다. 웹 앱 자체는 Telegram 이 원하는 응답을 돌려줍니다.');
+    lines.push('그런데도 getWebhookInfo 에 302 가 남아 있다면 등록된 웹훅이 예전 배포를 보고 있는 것입니다.');
+    lines.push('→ Telegram.gs 의 setWebhook 을 다시 실행하세요.');
+  } else if (code === 302 || code === 301) {
+    lines.push('이동 위치: ' + (redirectHost(location) || '(헤더 없음)'));
+    if (/accounts\.google\.com/.test(location)) {
+      lines.push('로그인 화면으로 보냅니다. 배포의 "액세스 권한" 이 모든 사용자가 아닙니다.');
+      lines.push('→ 배포 관리 → 연필 → 액세스 권한: 모든 사용자 → 새 버전으로 배포하세요.');
+    } else if (/googleusercontent\.com/.test(location)) {
+      lines.push('Apps Script 가 본문을 다른 도메인에서 내보내려고 합니다. 이때는 배포 설정 문제가 아닙니다.');
+      lines.push('→ Telegram 은 이 이동을 따라가지 않아 실패로 기록하고 재시도합니다.');
+      lines.push('→ setWebhook 으로 밀린 건을 비우면 당장은 회신이 돌아옵니다.');
+    } else {
+      lines.push('알 수 없는 이동입니다. 배포 설정을 다시 확인하세요.');
+    }
+  } else {
+    lines.push('예상 밖의 응답입니다. 배포가 살아 있는지 확인하세요.');
+  }
+  lines.push('Log 탭 마지막 줄이 "[무시]" 면 요청이 doPost 까지 들어온 것입니다.');
+  lines.push('──────────────');
+  Logger.log(lines.join('\n'));
+  return code;
+}
+
+/** 리디렉션 주소에서 도메인만 뽑는다. 전체 주소에는 토큰이 섞일 수 있다. */
+function redirectHost(location) {
+  var m = /^https?:\/\/([^/]+)/.exec(String(location || ''));
+  return m ? m[1] : '';
+}
+
 /** 배포 URL 을 식별만 되게 줄인다. 전체 URL 은 비밀값이므로 찍지 않는다. */
 function summarizeExecUrl(url) {
   var base = String(url).split('?')[0];
