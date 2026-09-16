@@ -132,6 +132,104 @@ function savingsPlan(month) {
 }
 
 /**
+ * 그 달 고정 지출 목록을 실행 로그에 표로 찍는다.
+ *
+ * 금액이 정해진 것과 고지서를 봐야 아는 것을 나눠 보여 준다. 앞의 것은 달이 열릴 때
+ * 이미 예산에서 빠져 있고, 뒤의 것은 실제 금액을 보낼 때 빠진다.
+ * 수입은 빼고, 유동비(식료품 등)도 고정 항목이 아니므로 여기에 없다.
+ *
+ * @param {string=} yyyyMm 생략하면 이번 달
+ * @return {string} 찍은 내용 그대로
+ */
+function listFixedExpenses(yyyyMm) {
+  var month = yyyyMm || currentMonthStr();
+  var rows = monthTransactions(month);
+  var groups = { fixed: [], variable: [], transfer: [] };
+
+  activeRecurring().forEach(function (definition) {
+    var type = recurringType(definition);
+    if (type === 'income') {
+      return; // 지출 목록이다. 수입은 웹앱 수입 화면에서 본다
+    }
+    var id = String(definition.id).trim();
+    var currency = String(definition.currency || 'USD').trim().toUpperCase() || 'USD';
+    var plan = toUsd(recurringExpectedAmount(definition, month), currency);
+
+    var actual = 0;
+    var reserved = '';
+    var settled = false;
+    rows.forEach(function (row) {
+      if (String(row.recurring_id || '').trim() !== id) {
+        return;
+      }
+      var status = String(row.status).trim();
+      if (isSettledStatus(status)) {
+        actual += Number(row.amount_usd) || 0;
+        settled = true;
+      } else if (isReservedStatus(status) && !reserved) {
+        reserved = status === 'committed' ? '선반영' : '예정';
+      }
+    });
+
+    var bucket = type === 'transfer' ? 'transfer' : recurringCertainty(definition);
+    groups[bucket].push({
+      name: String(definition.name || id),
+      category: String(definition.category || ''),
+      dueDay: Number(definition.due_day) || 1,
+      plan: plan,
+      actual: roundCents(actual),
+      state: settled ? '집행' : (reserved || '기장 없음')
+    });
+  });
+
+  var order = function (a, b) { return a.dueDay - b.dueDay || a.name.localeCompare(b.name); };
+  Object.keys(groups).forEach(function (k) { groups[k].sort(order); });
+
+  var lines = ['── ' + month + ' 고정 지출 ──'];
+  var totalPlan = 0;
+  var totalActual = 0;
+
+  var section = function (title, items, note) {
+    if (!items.length) {
+      return;
+    }
+    lines.push('');
+    lines.push('[' + title + ']');
+    if (note) {
+      lines.push('  ' + note);
+    }
+    var sumPlan = 0;
+    var sumActual = 0;
+    items.forEach(function (it) {
+      sumPlan += it.plan;
+      sumActual += it.actual;
+      lines.push('  ' + it.dueDay + '일 · ' + it.name +
+        (it.category ? ' (' + it.category + ')' : '') +
+        ' · 예상 ' + formatUsd(it.plan) +
+        ' · ' + it.state +
+        (it.state === '집행' ? ' ' + formatUsd(it.actual) : ''));
+    });
+    lines.push('  소계 예상 ' + formatUsd(sumPlan) + ' · 집행 ' + formatUsd(sumActual));
+    totalPlan += sumPlan;
+    totalActual += sumActual;
+  };
+
+  section('금액 확정 · 달이 열릴 때 예산에서 이미 뺌', groups.fixed);
+  section('금액 변동 · 실제 금액을 보내야 예산에 반영', groups.variable,
+    '예상액은 참고용이다. 아직 예산에서 빠지지 않았다.');
+  section('저축 (수입도 지출도 아님)', groups.transfer);
+
+  lines.push('');
+  lines.push('합계 · 예상 ' + formatUsd(totalPlan) + ' · 집행 ' + formatUsd(totalActual));
+  lines.push('유동비(식료품·생필품 등)와 수입은 이 목록에 없다.');
+  lines.push('────────────');
+
+  var out = lines.join('\n');
+  Logger.log(out);
+  return out;
+}
+
+/**
  * 그 달의 고정 항목 expected 행을 만든다. 멱등: 이미 있으면 건너뛴다.
  * @param {string=} yyyyMm 생략하면 이번 달
  * @return {number} 새로 추가한 행 수
