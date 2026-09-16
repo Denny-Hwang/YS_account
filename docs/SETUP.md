@@ -580,6 +580,7 @@ Apps Script 편집기 왼쪽 파일 목록에서 파일을 고른 뒤, 상단 �
 | `postMonthlyRecurring` | `Recurring.gs` | 이번 달 고정 항목 예정 행 생성 |
 | `recomputeIncomePct` | `Recurring.gs` | 수입 비율 항목 다시 계산 |
 | `resyncReservedStatuses` | `Recurring.gs` | 예약 행을 지금 `certainty` 기준으로 맞춘다(committed ↔ expected) |
+| `listFixedExpenses` | `Recurring.gs` | 그 달 고정 지출 목록을 실행 로그에 표로 찍는다 |
 
 ### 화면 다시 그리기
 

@@ -561,3 +561,32 @@ test('복구 중 무슨 일이 있어도 웹훅 재등록은 시도한다', () =
   assert.ok(rowsOf(ctx, 'Log').some((r) => String(r.result).indexOf('setWebhook 을 손으로 실행') >= 0),
     '손으로 할 일을 Log 에 남긴다');
 });
+
+test('listFixedExpenses 는 금액 확정과 변동을 나눠 찍는다', () => {
+  const ctx = fresh();
+  const printed = [];
+  ctx.Logger.log = (s) => printed.push(String(s));
+  const out = ctx.listFixedExpenses('2026-09');
+  assert.equal(printed.join('\n'), out, '반환값과 로그가 같다');
+
+  assert.match(out, /── 2026-09 고정 지출 ──/);
+  assert.match(out, /\[금액 확정 · 달이 열릴 때 예산에서 이미 뺌\]/);
+  assert.match(out, /\[금액 변동 · 실제 금액을 보내야 예산에 반영\]/);
+  assert.match(out, /\[저축 \(수입도 지출도 아님\)\]/);
+
+  // 렌트는 금액 확정이라 선반영, 관리비는 변동이라 예정
+  assert.match(out, /1일 · 렌트 \(주거비\) · 예상 \$1,000\.00 · 선반영/);
+  assert.match(out, /1일 · 관리비 \(주거비\) · 예상 \$100\.00 · 예정/);
+  // 급여는 수입이라 목록에 없다
+  assert.ok(!/급여/.test(out), '수입은 고정 지출 목록에 넣지 않는다');
+  // 합계는 저축까지 포함한 예상액: 확정 1230 + 변동 350 + 저축 300
+  assert.match(out, /소계 예상 \$1,230\.00 · 집행 \$0\.00/);
+  assert.match(out, /합계 · 예상 \$1,880\.00 · 집행 \$0\.00/);
+
+  // 실제 금액을 보내면 그 줄이 집행으로 바뀐다
+  msg(ctx, '관리비 212');
+  printed.length = 0;
+  const after = ctx.listFixedExpenses('2026-09');
+  assert.match(after, /1일 · 관리비 \(주거비\) · 예상 \$100\.00 · 집행 \$212\.00/);
+  assert.match(after, /합계 · 예상 \$1,880\.00 · 집행 \$212\.00/);
+});
