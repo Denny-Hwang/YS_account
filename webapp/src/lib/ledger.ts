@@ -6,7 +6,7 @@
 import { isSpentStatus, isSettledStatus } from '@shared/Budget.js'
 import { isReservedStatus, pickConfirmTarget } from '@shared/LedgerRules.js'
 import type { ParsedMessage } from '@shared/Parser.js'
-import { appendManyValues, appendValues, readTabs, updateCells, type SheetsContext, type Table } from './sheets'
+import { appendManyValues, appendValues, clearRows, readTabs, updateCells, type SheetsContext, type Table } from './sheets'
 
 export const TABS = {
   transactions: 'Transactions',
@@ -134,6 +134,21 @@ export async function appendManyTo(
 ): Promise<void> {
   const headers = workbook.tables[tab].headers
   await appendManyValues(ctx, tab, rows.map((row) => rowToValues(headers, row)))
+}
+
+/**
+ * 참조 탭(자산·부채·목표 등)의 행들을 비운다. 원장에는 쓰지 않는다(Golden Rule 3: 원장은 soft delete).
+ * 행 번호는 그대로 두고 값만 지우므로 같은 화면에서 이어서 다른 행을 고쳐도 번호가 어긋나지 않는다.
+ */
+export async function removeRows(
+  ctx: SheetsContext,
+  workbook: Workbook,
+  tab: string,
+  rows: SheetRow[]
+): Promise<void> {
+  if (tab === TABS.transactions) throw new Error('원장은 비우지 않습니다. status 를 deleted 로 바꾸세요.')
+  const width = workbook.tables[tab].headers.length
+  await clearRows(ctx, tab, rows.map((r) => r._row), width)
 }
 
 /**

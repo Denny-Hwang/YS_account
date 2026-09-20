@@ -23,6 +23,8 @@ export function RowSheet({
   onClose,
   onSaved,
   onError,
+  onDelete,
+  deleteLabel = '삭제',
 }: {
   title: string
   tab: string
@@ -34,6 +36,9 @@ export function RowSheet({
   onClose: () => void
   onSaved: () => void
   onError: (m: string) => void
+  /** 있으면 기존 행에 "삭제" 버튼이 생긴다. 확인을 받은 뒤 부른다. 끝나면 onSaved 와 같이 화면을 새로 읽는다. */
+  onDelete?: (row: SheetRow) => Promise<void>
+  deleteLabel?: string
 }) {
   const [form, setForm] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {}
@@ -53,6 +58,22 @@ export function RowSheet({
       })
       if (row) await patchIn(ctx, workbook, tab, row, payload)
       else await appendTo(ctx, workbook, tab, { ...defaults, ...payload })
+      onSaved()
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err))
+      onClose()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove() {
+    if (!row || !onDelete) return
+    const name = String(row[fields[0]?.key ?? ''] ?? '').trim() || '이 항목'
+    if (!window.confirm(`"${name}" 을(를) 지울까요? 되돌릴 수 없습니다.`)) return
+    setBusy(true)
+    try {
+      await onDelete(row)
       onSaved()
     } catch (err) {
       onError(err instanceof Error ? err.message : String(err))
@@ -92,9 +113,15 @@ export function RowSheet({
         <button className="primary" onClick={() => void save()} disabled={busy}>
           저장
         </button>
-        <button className="ghost" onClick={onClose} disabled={busy}>
-          취소
-        </button>
+        {row && onDelete ? (
+          <button className="danger" onClick={() => void remove()} disabled={busy}>
+            {deleteLabel}
+          </button>
+        ) : (
+          <button className="ghost" onClick={onClose} disabled={busy}>
+            취소
+          </button>
+        )}
       </div>
     </Sheet>
   )
