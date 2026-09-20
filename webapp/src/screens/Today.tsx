@@ -5,7 +5,7 @@ import { classify } from '@shared/Classifier.js'
 import { matchRecurringName } from '@shared/LedgerRules.js'
 import { Bullet, MonthlyBars, Stat } from '../components/Charts'
 import { Card, Empty, Notice } from '../components/Ui'
-import { budgetAmount, categoryOptions, configList, configNumber, monthTransactions, recordParsed, type Workbook } from '../lib/ledger'
+import { budgetAmount, categoryOptions, configList, configNumber, monthTransactions, recordParsed, softDeleteTransaction, type Workbook } from '../lib/ledger'
 import { emergencyFund, recentDaily, savingsPlan } from '../lib/metrics'
 import type { SheetsContext } from '../lib/sheets'
 
@@ -47,6 +47,8 @@ export function Today({
   const [type, setType] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null)
+  // 방금 새로 추가한 행의 id. 잘못 적었을 때 한 번에 되돌릴 수 있게 한다. 확정(confirm)은 되돌리기 대상이 아니다.
+  const [lastTxId, setLastTxId] = useState<string | null>(null)
 
   const month = today.slice(0, 7)
   const envelopes = configList(workbook.config, 'envelopes')
@@ -107,6 +109,7 @@ export function Today({
       setCategory('')
       setType('')
       const amount = formatUsd(Math.abs(Number(parsed.amount_usd)))
+      setLastTxId(result.mode === 'confirm' ? null : result.txId)
       setMessage({
         kind: 'info',
         text:
@@ -124,9 +127,38 @@ export function Today({
     }
   }
 
+  // 되돌릴 행은 새로고침된 원장에서 찾는다. 아직 안 읽혔으면 버튼이 잠시 비활성이다.
+  const lastRow = lastTxId ? workbook.transactions.find((r) => String(r.id) === lastTxId) ?? null : null
+
+  async function undoLast() {
+    if (!lastRow || busy) return
+    setBusy(true)
+    try {
+      await softDeleteTransaction(ctx, workbook, lastRow, 'web')
+      setLastTxId(null)
+      setMessage({ kind: 'info', text: `${String(lastRow.merchant) || '항목'} ${formatUsd(Math.abs(Number(lastRow.amount_usd) || 0))} 기록을 되돌렸습니다.` })
+      onChanged()
+    } catch (err) {
+      setMessage({ kind: 'error', text: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="viz">
-      {message && <Notice kind={message.kind}>{message.text}</Notice>}
+      {message && (
+        <Notice kind={message.kind}>
+          <span className="row" style={{ gap: 10 }}>
+            <span className="grow">{message.text}</span>
+            {message.kind === 'info' && lastTxId && (
+              <button className="ghost" style={{ padding: '2px 10px' }} disabled={!lastRow || busy} onClick={() => void undoLast()}>
+                되돌리기
+              </button>
+            )}
+          </span>
+        </Notice>
+      )}
 
       <Card>
         <div className="stat-row">
