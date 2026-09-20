@@ -48,9 +48,10 @@ var SHEETS = {
   },
   ASSETS: {
     name: 'Assets',
-    // extendable: fx_usd_krw 는 나중에 추가된 열. 스냅샷 당시 환율. 비어 있으면 Config 값을 쓴다.
+    // extendable: fx_usd_krw 와 kind 는 나중에 추가된 열.
+    // fx_usd_krw 는 스냅샷 당시 환율(비어 있으면 Config 값), kind 는 자산 종류(비어 있으면 cash).
     extendable: true,
-    headers: ['snapshot_date', 'account', 'balance', 'currency', 'fx_usd_krw']
+    headers: ['snapshot_date', 'account', 'balance', 'currency', 'fx_usd_krw', 'kind']
   },
   GOALS: {
     name: 'Goals',
@@ -104,7 +105,9 @@ var ENUMS = {
   horizon: ['short', 'mid', 'long'],
   currency: ['USD', 'KRW'],
   active: ['Y', 'N'],
-  source: ['telegram', 'web', 'recurring', 'csv', 'migration']
+  source: ['telegram', 'web', 'recurring', 'csv', 'migration'],
+  // 자산 종류. cash 만 "아무 때나 빼 쓸 수 있는 돈" 이라 비상금 계산에 들어간다.
+  asset_kind: ['cash', 'stock', 'pension', 'retirement', '401k', 'hsa', 'other']
 };
 
 var CONFIG_CACHE_SECONDS = 300;

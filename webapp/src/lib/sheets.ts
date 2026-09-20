@@ -81,10 +81,20 @@ export async function appendValues(
   name: string,
   values: (string | number)[]
 ): Promise<void> {
+  await appendManyValues(ctx, name, [values])
+}
+
+/** 탭 끝에 여러 행을 한 번에 추가한다. 자산 스냅샷처럼 같은 날짜의 행 묶음에 쓴다. */
+export async function appendManyValues(
+  ctx: SheetsContext,
+  name: string,
+  rows: (string | number)[][]
+): Promise<void> {
+  if (rows.length === 0) return
   await request(
     ctx,
     `/values/${encodeURIComponent(`'${name}'`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-    { method: 'POST', body: JSON.stringify({ values: [values] }) }
+    { method: 'POST', body: JSON.stringify({ values: rows }) }
   )
 }
 

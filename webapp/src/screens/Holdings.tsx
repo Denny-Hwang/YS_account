@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { formatUsd } from '@shared/Budget.js'
 import { Bullet, LineChart, RankBars, Stat } from '../components/Charts'
 import { RowSheet } from '../components/RowSheet'
-import { Card, Empty, Notice } from '../components/Ui'
-import { TABS, assetUsd, latestAssetsTotal, monthsBack, nextIdFor, type SheetRow, type Workbook } from '../lib/ledger'
-import { assetsHistory, averageNet, debtOverview, debtSchedule, emergencyFund, monthlyTotals } from '../lib/metrics'
+import { Card, Empty, Notice, Sheet } from '../components/Ui'
+import { ASSET_KINDS, TABS, appendManyTo, assetKindOf, latestAssetRows, latestAssetsTotal, monthsBack, nextIdFor, type SheetRow, type Workbook } from '../lib/ledger'
+import { assetsByKind, assetsHistory, averageNet, debtOverview, debtSchedule, emergencyFund, monthlyTotals } from '../lib/metrics'
 import type { SheetsContext } from '../lib/sheets'
 
 type Editing = SheetRow | 'new' | null
@@ -106,28 +106,92 @@ export function Debts({ workbook, ctx, today, onChanged }: { workbook: Workbook;
   )
 }
 
-/** 자산. 스냅샷 추이와 최신 구성. 스냅샷마다 그날 환율을 함께 적는다. */
+/** 원화 표기. 스냅샷 목록에서 원래 통화 금액을 함께 보여 줄 때 쓴다. */
+function formatNative(row: SheetRow): string {
+  const balance = Number(row.balance) || 0
+  if (String(row.currency).trim().toUpperCase() === 'KRW') return `₩${Math.round(balance).toLocaleString('ko-KR')}`
+  return formatUsd(balance)
+}
+
+/**
+ * 자산. 종류별(계좌 잔액·주식·연금·퇴직연금·401k·HSA)로 묶어 보여 준다.
+ * 계좌 잔액만 "아무 때나 빼 쓸 수 있는 돈" 이라 비상금 계산에 들어간다.
+ * 새 스냅샷은 직전 스냅샷의 계좌 목록을 불러와 잔액만 고쳐 넣는다.
+ */
 export function Assets({ workbook, ctx, today, onChanged }: { workbook: Workbook; ctx: SheetsContext; today: string; onChanged: () => void }) {
   const [editing, setEditing] = useState<Editing>(null)
+  const [snapshot, setSnapshot] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const latest = latestAssetsTotal(workbook)
   const history = assetsHistory(workbook)
-  const rows = workbook.assets.filter((row) => String(row.snapshot_date).slice(0, 10) === latest.date)
+  const groups = assetsByKind(workbook)
   const prev = history.length >= 2 ? history[history.length - 2] : null
   const change = prev ? latest.total - prev.total : null
   const fx = Number(workbook.config.fx_usd_krw) || 1332
+  const hasKindColumn = workbook.tables[TABS.assets]?.headers.includes('kind')
+  const locked = latest.total - latest.liquid
 
   return (
     <div className="viz">
       {error && <Notice kind="error">{error}</Notice>}
-      <Card action={<button onClick={() => setEditing('new')}>스냅샷 추가</button>}>
+      {!hasKindColumn && (
+        <Notice kind="info">
+          시트의 Assets 탭에 아직 <code>kind</code> 열이 없어 종류를 저장할 수 없습니다. Apps Script 편집기에서 <code>Setup.gs</code> 의 <code>setupSheet</code> 를 한 번 실행하면 열이 붙습니다.
+        </Notice>
+      )}
+      <Card action={<button className="primary" onClick={() => setSnapshot(true)}>새 스냅샷</button>}>
         <div className="stat-row">
           <Stat label="자산 합계" value={formatUsd(latest.total)} sub={latest.date ? `${latest.date} 기준` : '기록 없음'} />
+          <Stat label="바로 쓸 수 있는 돈" value={formatUsd(latest.liquid)} size="md" sub="계좌 잔액만" tone="good" />
+          {locked > 0 && <Stat label="묶인 돈" value={formatUsd(locked)} size="md" sub="주식·연금·401k·HSA" />}
           {change !== null && prev && (
             <Stat label={`${prev.date} 대비`} value={`${change >= 0 ? '+' : '-'}${formatUsd(Math.abs(change))}`} size="md" tone={change >= 0 ? 'good' : 'bad'} />
           )}
         </div>
       </Card>
+
+      {groups.length === 0 ? (
+        <Card title="시작하기">
+          <Empty>자산 스냅샷이 없습니다. "새 스냅샷" 을 누르면 계좌·주식·국민연금·퇴직연금·401k·HSA 칸이 준비됩니다. 잔액만 채우면 됩니다.</Empty>
+        </Card>
+      ) : (
+        <>
+          <Card title={`${latest.date} 종류별 구성`}>
+            <RankBars
+              items={groups.map((g) => ({ name: g.kind.label, value: g.total, hint: g.kind.liquid ? '바로 쓸 수 있음' : undefined }))}
+              tone="income"
+            />
+          </Card>
+
+          {groups.map((g) => (
+            <Card key={g.kind.id} title={`${g.kind.label} · ${formatUsd(g.total)}`}>
+              {g.rows.map(({ row, usd }) => (
+                <div
+                  className="tx"
+                  key={row._row}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setEditing(row)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') setEditing(row)
+                  }}
+                >
+                  <span className="grow ellipsis">
+                    {String(row.account) || '(이름 없음)'}
+                    {String(row.currency).toUpperCase() === 'KRW' && (
+                      <span className="meta"> · {formatNative(row)}{row.fx_usd_krw ? ` @${row.fx_usd_krw}` : ''}</span>
+                    )}
+                  </span>
+                  <span className="amount">{formatUsd(usd)}</span>
+                </div>
+              ))}
+            </Card>
+          ))}
+          <p className="meta">
+            항목을 누르면 고칠 수 있습니다. 원화 자산은 그날 환율로 달러 환산해 합칩니다. 비상금(고정비 N개월치)은 계좌 잔액만으로 셉니다.
+          </p>
+        </>
+      )}
 
       {history.length >= 2 && (
         <Card title="자산 추이">
@@ -135,24 +199,18 @@ export function Assets({ workbook, ctx, today, onChanged }: { workbook: Workbook
         </Card>
       )}
 
-      {rows.length === 0 ? (
-        <Empty>자산 스냅샷이 없습니다. 같은 날짜로 계좌별 잔액을 넣으세요.</Empty>
-      ) : (
-        <Card title={`${latest.date} 구성`}>
-          <RankBars
-            items={rows.map((row) => ({
-              name: String(row.account),
-              value: Math.round(assetUsd(row, fx) * 100) / 100,
-              hint: String(row.currency).toUpperCase() === 'KRW' && row.fx_usd_krw ? `KRW @${row.fx_usd_krw}` : String(row.currency),
-            }))}
-            tone="income"
-            onSelect={(name) => {
-              const hit = rows.find((r) => String(r.account) === name)
-              if (hit) setEditing(hit)
-            }}
-          />
-          <p className="meta" style={{ marginTop: 10 }}>새 스냅샷은 같은 날짜로 계좌마다 한 줄씩 넣습니다. 원화 계좌는 그날 환율을 함께 적어 두면 나중에 환율이 바뀌어도 그날 값이 유지됩니다.</p>
-        </Card>
+      {snapshot && (
+        <SnapshotSheet
+          workbook={workbook}
+          ctx={ctx}
+          today={today}
+          onClose={() => setSnapshot(false)}
+          onError={setError}
+          onSaved={() => {
+            setSnapshot(false)
+            onChanged()
+          }}
+        />
       )}
 
       {editing && (
@@ -165,11 +223,12 @@ export function Assets({ workbook, ctx, today, onChanged }: { workbook: Workbook
           fields={[
             { key: 'snapshot_date', label: '기준일', type: 'date' },
             { key: 'account', label: '계좌' },
+            { key: 'kind', label: '종류', options: ASSET_KINDS.map((k) => ({ value: k.id, label: k.label })) },
             { key: 'balance', label: '잔액', numeric: true },
             { key: 'currency', label: '통화', options: ['USD', 'KRW'] },
             { key: 'fx_usd_krw', label: '그날 환율 (KRW 만, 비우면 Config 값)', numeric: true },
           ]}
-          defaults={{ snapshot_date: today, currency: 'USD', fx_usd_krw: fx }}
+          defaults={{ snapshot_date: today, kind: 'cash', currency: 'USD', fx_usd_krw: fx }}
           onClose={() => setEditing(null)}
           onError={setError}
           onSaved={() => {
@@ -179,6 +238,131 @@ export function Assets({ workbook, ctx, today, onChanged }: { workbook: Workbook
         />
       )}
     </div>
+  )
+}
+
+interface SnapshotLine {
+  account: string
+  kind: string
+  balance: string
+  currency: string
+}
+
+/**
+ * 새 스냅샷 입력. 직전 스냅샷의 계좌 목록을 그대로 불러오고(잔액은 직전 값), 없으면 종류별 템플릿을 깐다.
+ * 잔액만 고쳐 저장하면 같은 날짜로 계좌마다 한 줄씩 들어간다. 잔액이 빈 줄은 저장하지 않는다.
+ */
+function SnapshotSheet({ workbook, ctx, today, onClose, onSaved, onError }: { workbook: Workbook; ctx: SheetsContext; today: string; onClose: () => void; onSaved: () => void; onError: (m: string) => void }) {
+  const configFx = Number(workbook.config.fx_usd_krw) || 1332
+  const [date, setDate] = useState(today)
+  const [fx, setFx] = useState(String(configFx))
+  const [busy, setBusy] = useState(false)
+  const [lines, setLines] = useState<SnapshotLine[]>(() => {
+    const previous = latestAssetRows(workbook)
+    if (previous.length > 0) {
+      return previous.map((row) => ({
+        account: String(row.account ?? ''),
+        kind: assetKindOf(row).id,
+        balance: String(row.balance ?? ''),
+        currency: String(row.currency || 'USD').toUpperCase(),
+      }))
+    }
+    return ASSET_KINDS.filter((k) => k.example).map((k) => ({ account: k.example, kind: k.id, balance: '', currency: k.currency }))
+  })
+
+  function update(i: number, patch: Partial<SnapshotLine>) {
+    setLines((ls) => ls.map((l, k) => (k === i ? { ...l, ...patch } : l)))
+  }
+
+  async function save() {
+    const fxNum = Number(fx)
+    if (!Number.isFinite(fxNum) || fxNum <= 0) {
+      onError('환율이 숫자가 아닙니다.')
+      return
+    }
+    const filled = lines.filter((l) => l.account.trim() && l.balance.trim() !== '')
+    if (filled.length === 0) {
+      onError('잔액을 하나 이상 넣어 주세요.')
+      return
+    }
+    const bad = filled.find((l) => !Number.isFinite(Number(l.balance)))
+    if (bad) {
+      onError(`"${bad.account}" 의 잔액이 숫자가 아닙니다.`)
+      return
+    }
+    setBusy(true)
+    try {
+      await appendManyTo(
+        ctx,
+        workbook,
+        TABS.assets,
+        filled.map((l) => ({
+          snapshot_date: date,
+          account: l.account.trim(),
+          balance: Number(l.balance),
+          currency: l.currency,
+          fx_usd_krw: l.currency === 'KRW' ? fxNum : '',
+          kind: l.kind,
+        }))
+      )
+      onSaved()
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err))
+      onClose()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Sheet title="새 스냅샷" onClose={onClose}>
+      <div className="row" style={{ alignItems: 'flex-end' }}>
+        <div className="grow">
+          <label>기준일</label>
+          <input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        <div style={{ width: 130 }}>
+          <label>오늘 환율 (₩/$)</label>
+          <input inputMode="decimal" value={fx} onChange={(e) => setFx(e.target.value)} />
+        </div>
+      </div>
+      <p className="meta" style={{ margin: '8px 0 4px' }}>
+        잔액만 고치면 됩니다. 비워 둔 줄은 저장하지 않습니다. 원화 계좌는 위 환율로 달러 환산됩니다.
+      </p>
+      {lines.map((l, i) => (
+        <div className="snap-line" key={i}>
+          <div className="row" style={{ gap: 6 }}>
+            <input className="grow" value={l.account} placeholder="계좌 이름" onChange={(e) => update(i, { account: e.target.value })} />
+            <select value={l.kind} style={{ width: 118 }} onChange={(e) => update(i, { kind: e.target.value })}>
+              {ASSET_KINDS.map((k) => (
+                <option key={k.id} value={k.id}>{k.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="row" style={{ gap: 6, marginTop: 6 }}>
+            <input className="grow" inputMode="decimal" value={l.balance} placeholder="잔액" onChange={(e) => update(i, { balance: e.target.value })} />
+            <select value={l.currency} style={{ width: 84 }} onChange={(e) => update(i, { currency: e.target.value })}>
+              <option value="USD">USD</option>
+              <option value="KRW">KRW</option>
+            </select>
+            <button type="button" className="ghost" aria-label="이 줄 지우기" style={{ padding: '8px 10px' }} onClick={() => setLines((ls) => ls.filter((_, k) => k !== i))}>
+              ✕
+            </button>
+          </div>
+        </div>
+      ))}
+      <button type="button" className="ghost" style={{ marginTop: 8 }} onClick={() => setLines((ls) => [...ls, { account: '', kind: 'cash', balance: '', currency: 'USD' }])}>
+        + 계좌 추가
+      </button>
+      <div className="actions">
+        <button className="primary" onClick={() => void save()} disabled={busy}>
+          {busy ? '저장 중' : `${lines.filter((l) => l.account.trim() && l.balance.trim() !== '').length}줄 저장`}
+        </button>
+        <button className="ghost" onClick={onClose} disabled={busy}>
+          취소
+        </button>
+      </div>
+    </Sheet>
   )
 }
 
@@ -204,7 +388,7 @@ export function Goals({ workbook, ctx, today, onChanged }: { workbook: Workbook;
       {error && <Notice kind="error">{error}</Notice>}
       <Card action={<button onClick={() => setEditing('new')}>추가</button>}>
         <div className="stat-row">
-          <Stat label="현재 자산" value={formatUsd(assets.total)} size="md" sub={assets.date || '스냅샷 없음'} />
+          <Stat label="현재 자산" value={formatUsd(assets.total)} size="md" sub={assets.date ? `${assets.date} · 바로 쓸 수 있는 돈 ${formatUsd(assets.liquid)}` : '스냅샷 없음'} />
           <Stat label="최근 6개월 월평균 순저축" value={formatUsd(avg)} size="md" tone={avg < 0 ? 'bad' : undefined} />
         </div>
       </Card>
@@ -213,16 +397,16 @@ export function Goals({ workbook, ctx, today, onChanged }: { workbook: Workbook;
         <Card title="비상금 먼저">
           <Bullet
             label={`고정비 ${fund.months}개월치`}
-            value={Math.min(assets.total, fund.target)}
+            value={Math.min(fund.assets, fund.target)}
             target={fund.target}
             tone="income"
             hint={
-              assets.total >= fund.target
+              fund.assets >= fund.target
                 ? `채웠습니다 · 월 고정비 ${formatUsd(fund.monthly)}`
-                : `${formatUsd(fund.target - assets.total)} 남음 · 월 고정비 ${formatUsd(fund.monthly)} · 지금 ${fund.covered ?? 0}개월분${etaFor(fund.target - assets.total) ? ` · 지금 속도면 ${etaFor(fund.target - assets.total)!.label}` : ''}`
+                : `${formatUsd(fund.target - fund.assets)} 남음 · 월 고정비 ${formatUsd(fund.monthly)} · 지금 ${fund.covered ?? 0}개월분${etaFor(fund.target - fund.assets) ? ` · 지금 속도면 ${etaFor(fund.target - fund.assets)!.label}` : ''}`
             }
           />
-          <p className="meta" style={{ marginTop: 8 }}>Config 의 emergency_fund_months 로 개월 수를 바꿀 수 있습니다. 활성 고정비(지출)의 월 예상 합을 기준으로 합니다.</p>
+          <p className="meta" style={{ marginTop: 8 }}>비상금은 계좌 잔액(바로 쓸 수 있는 돈)만으로 셉니다. 연금·401k 는 넣지 않습니다. Config 의 emergency_fund_months 로 개월 수를 바꿀 수 있습니다.</p>
         </Card>
       )}
 

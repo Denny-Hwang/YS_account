@@ -305,6 +305,11 @@ svg.line .grid { stroke: var(--grid); stroke-width: 1; vector-effect: non-scalin
 .detail .tx { padding: 8px 0; }
 .detail .empty { padding: 8px 0; text-align: left; }
 
+/* 자산 스냅샷 입력의 한 줄(계좌·종류 / 잔액·통화) */
+.snap-line { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.snap-line:last-of-type { border-bottom: none; }
+.snap-line select { width: auto; }
+
 /* ── 달력 뷰 ──────────────────────────────────────────────── */
 .cal { --cal-gap: 3px; }
 .cal-head, .cal-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--cal-gap); }

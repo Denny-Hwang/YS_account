@@ -246,7 +246,7 @@ export function Today({
             tone="income"
             hint={
               fund.assetsDate
-                ? `자산 ${formatUsd(fund.assets)} (${fund.assetsDate}) = 고정비 ${fund.covered ?? 0}개월분 · 목표 ${formatUsd(fund.target)}`
+                ? `계좌 잔액 ${formatUsd(fund.assets)} (${fund.assetsDate}) = 고정비 ${fund.covered ?? 0}개월분 · 목표 ${formatUsd(fund.target)}`
                 : `자산 스냅샷이 없습니다. 더보기 › 자산에서 잔액을 넣으면 몇 개월분인지 보입니다 · 목표 ${formatUsd(fund.target)}`
             }
           />

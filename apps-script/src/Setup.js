@@ -35,7 +35,8 @@ var VALIDATIONS = {
     currency: 'currency'
   },
   Assets: {
-    currency: 'currency'
+    currency: 'currency',
+    kind: 'asset_kind'
   },
   Goals: {
     horizon: 'horizon',

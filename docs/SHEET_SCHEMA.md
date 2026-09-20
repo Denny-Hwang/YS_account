@@ -171,8 +171,23 @@
 | balance | 잔액 |
 | currency | `USD` \| `KRW` |
 | fx_usd_krw | 스냅샷 당시 환율. KRW 행에만 의미가 있다. 비어 있으면 Config 값을 쓴다 |
+| kind | 자산 종류(아래 표). 비어 있으면 `cash` 로 본다(이전 스냅샷과 호환) |
 
-헤더 순서: `snapshot_date, account, balance, currency, fx_usd_krw` (extendable)
+헤더 순서: `snapshot_date, account, balance, currency, fx_usd_krw, kind` (extendable)
+
+| kind | 뜻 | 비상금에 포함 |
+|---|---|---|
+| `cash` | 계좌 잔액. 아무 때나 빼 쓸 수 있는 돈 | ○ |
+| `stock` | 주식·펀드 등 투자 계좌 | ✕ |
+| `pension` | 국민연금 | ✕ |
+| `retirement` | 퇴직연금(IRP 등) | ✕ |
+| `401k` | 미국 401k | ✕ |
+| `hsa` | HSA | ✕ |
+| `other` | 그 밖의 자산 | ✕ |
+
+웹앱 자산 화면은 종류별로 묶어 보여 주고, 비상금(고정비 N개월치)은 `cash` 합계만으로 센다.
+연금·401k 는 당장 쓸 수 없는 돈이라 비상금으로 치면 착시가 생기기 때문이다.
+"새 스냅샷" 은 직전 스냅샷의 계좌 목록을 그대로 불러와 잔액만 고쳐 넣는 방식이라 매달 갱신이 빠르다.
 
 ## Goals (목표)
 

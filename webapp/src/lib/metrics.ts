@@ -4,7 +4,7 @@
  */
 import { daysInMonth } from '@shared/Budget.js'
 import { biweeklyPaydays, expectedAmountFor, parseAmountRule, payoffMonths } from '@shared/LedgerRules.js'
-import { assetUsd, budgetAmount, configList, configNumber, isCounted, latestAssetsTotal, monthsBack, recurringTypeOf, type SheetRow, type Workbook } from './ledger'
+import { ASSET_KINDS, assetKindOf, assetUsd, budgetAmount, configList, configNumber, isCounted, latestAssetRows, latestAssetsTotal, monthsBack, recurringTypeOf, type AssetKind, type SheetRow, type Workbook } from './ledger'
 
 const r2 = (n: number) => Math.round(n * 100) / 100
 const usd = (row: SheetRow) => Number(row.amount_usd) || 0
@@ -238,15 +238,37 @@ export function fixedMonthlyExpense(wb: Workbook, month: string): number {
 
 /**
  * 비상금: 고정비 N개월치(Config.emergency_fund_months, 기본 3)를 목표로,
- * 최신 자산 스냅샷이 몇 개월분인지 본다.
+ * 최신 자산 스냅샷 중 아무 때나 빼 쓸 수 있는 돈(계좌 잔액)이 몇 개월분인지 본다.
+ * 연금·401k 는 당장 못 쓰는 돈이라 넣지 않는다.
  */
 export function emergencyFund(wb: Workbook, month: string) {
   const months = configNumber(wb.config, 'emergency_fund_months', 3)
   const monthly = fixedMonthlyExpense(wb, month)
   const assets = latestAssetsTotal(wb)
   const target = r2(monthly * months)
-  const covered = monthly > 0 ? r2(assets.total / monthly) : null
-  return { months, monthly, target, assets: assets.total, assetsDate: assets.date, covered }
+  const covered = monthly > 0 ? r2(assets.liquid / monthly) : null
+  return { months, monthly, target, assets: assets.liquid, assetsTotal: assets.total, assetsDate: assets.date, covered }
+}
+
+export interface AssetGroup {
+  kind: AssetKind
+  total: number
+  rows: Array<{ row: SheetRow; usd: number }>
+}
+
+/** 최신 스냅샷을 종류별로 묶는다. 행이 없는 종류는 뺀다. 합계 큰 순. */
+export function assetsByKind(wb: Workbook): AssetGroup[] {
+  const fx = configNumber(wb.config, 'fx_usd_krw', 1332)
+  const groups = new Map<string, AssetGroup>()
+  latestAssetRows(wb).forEach((row) => {
+    const kind = assetKindOf(row)
+    const g = groups.get(kind.id) ?? { kind, total: 0, rows: [] }
+    const usd = r2(assetUsd(row, fx))
+    g.total = r2(g.total + usd)
+    g.rows.push({ row, usd })
+    groups.set(kind.id, g)
+  })
+  return ASSET_KINDS.map((k) => groups.get(k.id)).filter((g): g is AssetGroup => Boolean(g))
 }
 
 /**

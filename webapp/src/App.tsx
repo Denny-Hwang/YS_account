@@ -52,7 +52,7 @@ const TABS: Array<{ id: Screen; label: string }> = [
 const MORE_ITEMS: Array<{ id: Screen; label: string; hint: string }> = [
   { id: 'recurring', label: '고정비', hint: '정기 항목의 예상 금액과 이번 달 확정 여부' },
   { id: 'debts', label: '부채', hint: '남은 원금과 월 상환액' },
-  { id: 'assets', label: '자산', hint: '계좌별 잔액 스냅샷' },
+  { id: 'assets', label: '자산', hint: '계좌 잔액·주식·연금·401k·HSA 종류별 스냅샷' },
   { id: 'goals', label: '목표', hint: '목표액 대비 진행률' },
   { id: 'setup', label: '설정', hint: '시트 연결과 로그아웃' },
 ]
