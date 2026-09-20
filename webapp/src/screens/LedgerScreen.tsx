@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { formatUsd } from '@shared/Budget.js'
 import { initialRecurringStatus } from '@shared/LedgerRules.js'
 import { MonthCalendar, MonthSummary } from '../components/Calendar'
@@ -10,6 +10,7 @@ import {
   categoryOf,
   monthTransactions,
   patchTransaction,
+  shiftMonth,
   softDeleteTransaction,
   statusBadge,
   type SheetRow,
@@ -17,7 +18,11 @@ import {
 } from '../lib/ledger'
 import type { SheetsContext } from '../lib/sheets'
 
-const VIEW_KEY = 'family-budget.ledger-view.v1'
+// v2: 기본 보기를 달력으로 바꿨다. v1 에 남은 "목록" 선택이 새 기본값을 가리지 않게 키를 올렸다.
+const VIEW_KEY = 'family-budget.ledger-view.v2'
+
+/** 스와이프로 인정하는 최소 가로 이동(px). 세로 스크롤과 헷갈리지 않게 가로가 세로의 1.5배는 넘어야 한다. */
+const SWIPE_MIN_PX = 48
 
 /**
  * 지운 행을 되살릴 때 돌려놓을 상태.
@@ -35,12 +40,12 @@ function restoreStatusOf(workbook: Workbook, row: SheetRow): string {
 /** 세부예산 목록의 "직접 입력" 항목 값. 실제 이름과 겹치지 않게 둔다. */
 const NEW_CATEGORY = '\u0000new'
 
-/** 마지막으로 고른 보기 방식. 저장이 막혀 있어도(프라이빗 모드) 목록으로 연다. */
+/** 마지막으로 고른 보기 방식. 기본은 달력이고, 저장이 막혀 있어도(프라이빗 모드) 달력으로 연다. */
 function readView(): 'list' | 'calendar' {
   try {
-    return localStorage.getItem(VIEW_KEY) === 'calendar' ? 'calendar' : 'list'
+    return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'calendar'
   } catch {
-    return 'list'
+    return 'calendar'
   }
 }
 
@@ -58,10 +63,32 @@ export function LedgerScreen({
   today: string
   onChanged: () => void
 }) {
-  const months = availableMonths(workbook, today)
-  const [month, setMonth] = useState(months[0] ?? today.slice(0, 7))
+  const [month, setMonth] = useState(today.slice(0, 7))
+  // 기록이 있는 달 + 지금 보고 있는 달. 스와이프로 기록 없는 달에 가도 드롭다운이 그 달을 보여 준다.
+  const months = useMemo(() => {
+    const list = availableMonths(workbook, today)
+    return list.includes(month) ? list : [...list, month].sort().reverse()
+  }, [workbook, today, month])
   const [view, setView] = useState<'list' | 'calendar'>(() => readView())
   const [day, setDay] = useState<string | null>(null)
+  const touchStart = useRef<{ x: number; y: number } | null>(null)
+
+  function goMonth(next: string) {
+    setMonth(next)
+    setDay(null)
+  }
+
+  /** 달력 위에서 손가락을 좌우로 끌면 달이 넘어간다. 왼쪽으로 밀면 다음 달, 오른쪽으로 밀면 지난달. */
+  function onTouchEnd(e: React.TouchEvent) {
+    const start = touchStart.current
+    touchStart.current = null
+    if (!start) return
+    const t = e.changedTouches[0]
+    const dx = t.clientX - start.x
+    const dy = t.clientY - start.y
+    if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) < Math.abs(dy) * 1.5) return
+    goMonth(shiftMonth(month, dx < 0 ? 1 : -1))
+  }
   const [showDeleted, setShowDeleted] = useState(false)
   const [editing, setEditing] = useState<SheetRow | null>(null)
   const [undo, setUndo] = useState<{ row: SheetRow; previousStatus: string; label: string } | null>(null)
@@ -115,13 +142,21 @@ export function LedgerScreen({
 
       <Card>
         <div className="row controls">
-          <select value={month} onChange={(e) => { setMonth(e.target.value); setDay(null) }} style={{ maxWidth: 130 }}>
-            {months.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+          <div className="month-nav">
+            <button type="button" className="ghost" aria-label="지난달" onClick={() => goMonth(shiftMonth(month, -1))}>
+              ‹
+            </button>
+            <select value={month} onChange={(e) => goMonth(e.target.value)} aria-label="달 선택">
+              {months.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="ghost" aria-label="다음 달" onClick={() => goMonth(shiftMonth(month, 1))}>
+              ›
+            </button>
+          </div>
           <div className="seg" role="group" aria-label="보기 방식">
             <button
               type="button"
@@ -154,9 +189,24 @@ export function LedgerScreen({
       </Card>
 
       {view === 'calendar' && (
-        <Card>
-          <MonthCalendar month={month} rows={monthRows} today={today} selected={day} onSelect={setDay} />
-        </Card>
+        <div
+          className="swipe-area"
+          onTouchStart={(e) => {
+            const t = e.touches[0]
+            touchStart.current = { x: t.clientX, y: t.clientY }
+          }}
+          onTouchEnd={onTouchEnd}
+          onTouchCancel={() => {
+            touchStart.current = null
+          }}
+        >
+          <Card>
+            <MonthCalendar month={month} rows={monthRows} today={today} selected={day} onSelect={setDay} />
+            <p className="meta" style={{ margin: '8px 0 0', textAlign: 'center' }}>
+              달력을 좌우로 밀면 달이 넘어갑니다
+            </p>
+          </Card>
+        </div>
       )}
 
       <Card title={day ? `${day} · ${rows.length}건` : `${rows.length}건`}>

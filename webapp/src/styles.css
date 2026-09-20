@@ -279,6 +279,13 @@ svg.line .grid { stroke: var(--grid); stroke-width: 1; vector-effect: non-scalin
 .row.controls { flex-wrap: wrap; row-gap: 8px; }
 .row.controls > * { white-space: nowrap; }
 
+/* 달 이동: ‹ [2026-09 ▾] › */
+.month-nav { display: inline-flex; align-items: center; gap: 2px; }
+.month-nav select { width: auto; max-width: 120px; padding: 6px 8px; }
+.month-nav button { width: auto; padding: 6px 10px; font-size: 18px; line-height: 1; }
+/* 세로 스크롤은 브라우저가, 가로 끌기는 우리가 받는다 */
+.swipe-area { touch-action: pan-y; }
+
 .seg { display: inline-flex; flex: none; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
 .seg button {
   width: auto; flex: none; margin: 0; padding: 5px 14px; border: none; border-radius: 0;

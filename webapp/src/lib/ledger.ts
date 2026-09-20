@@ -321,6 +321,13 @@ export function recurringTypeOf(row: SheetRow): 'income' | 'expense' | 'transfer
   return t === 'income' || t === 'transfer' ? t : 'expense'
 }
 
+/** month 에서 delta 개월 옮긴 'YYYY-MM'. 달력을 넘길 때 쓴다. */
+export function shiftMonth(month: string, delta: number): string {
+  const [y, m] = month.split('-').map(Number)
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1))
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
 /** fromMonth 를 마지막으로 count 개월(오래된 순). */
 export function monthsBack(fromMonth: string, count: number): string[] {
   const [y, m] = fromMonth.split('-').map(Number)
