@@ -279,6 +279,13 @@ svg.line .grid { stroke: var(--grid); stroke-width: 1; vector-effect: non-scalin
 .row.controls { flex-wrap: wrap; row-gap: 8px; }
 .row.controls > * { white-space: nowrap; }
 
+/* 달 이동: ‹ [2026-09 ▾] › */
+.month-nav { display: inline-flex; align-items: center; gap: 2px; }
+.month-nav select { width: auto; max-width: 120px; padding: 6px 8px; }
+.month-nav button { width: auto; padding: 6px 10px; font-size: 18px; line-height: 1; }
+/* 세로 스크롤은 브라우저가, 가로 끌기는 우리가 받는다 */
+.swipe-area { touch-action: pan-y; }
+
 .seg { display: inline-flex; flex: none; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
 .seg button {
   width: auto; flex: none; margin: 0; padding: 5px 14px; border: none; border-radius: 0;
@@ -292,6 +299,16 @@ svg.line .grid { stroke: var(--grid); stroke-width: 1; vector-effect: non-scalin
 .tx .pill + .pill { margin-left: 4px; }
 /* 아직 안 나간 돈은 흐리게. 실제로 나간 돈과 한눈에 구분된다 */
 .tx .amount.pending { opacity: 0.6; font-weight: 500; }
+
+/* 불릿 아래 펼쳐지는 세부 목록(수입원별 기록 등). 살짝 들여 써서 어디에 딸린 목록인지 보이게 한다 */
+.detail { margin: 0 0 12px 10px; padding-left: 10px; border-left: 2px solid var(--border); }
+.detail .tx { padding: 8px 0; }
+.detail .empty { padding: 8px 0; text-align: left; }
+
+/* 자산 스냅샷 입력의 한 줄(계좌·종류 / 잔액·통화) */
+.snap-line { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.snap-line:last-of-type { border-bottom: none; }
+.snap-line select { width: auto; }
 
 /* ── 달력 뷰 ──────────────────────────────────────────────── */
 .cal { --cal-gap: 3px; }

@@ -6,7 +6,7 @@
 import { isSpentStatus, isSettledStatus } from '@shared/Budget.js'
 import { isReservedStatus, pickConfirmTarget } from '@shared/LedgerRules.js'
 import type { ParsedMessage } from '@shared/Parser.js'
-import { appendValues, readTabs, updateCells, type SheetsContext, type Table } from './sheets'
+import { appendManyValues, appendValues, readTabs, updateCells, type SheetsContext, type Table } from './sheets'
 
 export const TABS = {
   transactions: 'Transactions',
@@ -125,6 +125,17 @@ export async function appendTo(
   await appendValues(ctx, tab, rowToValues(workbook.tables[tab].headers, row))
 }
 
+/** 아무 탭에 여러 행을 한 번에 추가한다. */
+export async function appendManyTo(
+  ctx: SheetsContext,
+  workbook: Workbook,
+  tab: string,
+  rows: Array<Record<string, unknown>>
+): Promise<void> {
+  const headers = workbook.tables[tab].headers
+  await appendManyValues(ctx, tab, rows.map((row) => rowToValues(headers, row)))
+}
+
 /**
  * 아무 탭의 한 행을 부분 수정한다. 값이 실제로 바뀐 열만 쓴다.
  * 그 사이 다른 사람이 고친 다른 열은 건드리지 않는다.
@@ -151,18 +162,67 @@ export async function patchIn(
   await updateCells(ctx, tab, target._row, cells)
 }
 
-/** 최신 스냅샷 날짜의 자산 합계(USD 환산). 행에 fx_usd_krw 가 있으면 그 환율을 쓴다. */
-export function latestAssetsTotal(workbook: Workbook): { date: string; total: number } {
+/**
+ * 자산 종류. 시트의 Assets.kind 열 값이다.
+ * liquid 가 true 인 종류(계좌 잔액)만 "아무 때나 빼 쓸 수 있는 돈" 이라 비상금 계산에 들어간다.
+ * 연금·401k·HSA 는 당장 못 쓰는 돈이라 합계에는 들어가되 비상금에는 안 들어간다.
+ */
+export interface AssetKind {
+  id: string
+  label: string
+  liquid: boolean
+  /** 새 스냅샷 템플릿에서 이 종류의 기본 통화 */
+  currency: 'USD' | 'KRW'
+  /** 새 스냅샷 템플릿의 계좌 이름 예시 */
+  example: string
+}
+
+export const ASSET_KINDS: AssetKind[] = [
+  { id: 'cash', label: '계좌 잔액', liquid: true, currency: 'USD', example: '체킹' },
+  { id: 'stock', label: '주식·투자', liquid: false, currency: 'USD', example: '주식' },
+  { id: 'pension', label: '국민연금', liquid: false, currency: 'KRW', example: '국민연금' },
+  { id: 'retirement', label: '퇴직연금', liquid: false, currency: 'KRW', example: '퇴직연금 IRP' },
+  { id: '401k', label: '401k', liquid: false, currency: 'USD', example: '401k' },
+  { id: 'hsa', label: 'HSA', liquid: false, currency: 'USD', example: 'HSA' },
+  { id: 'other', label: '기타', liquid: false, currency: 'USD', example: '' },
+]
+
+/** 행의 자산 종류. kind 열이 비어 있거나 모르는 값이면 cash(이전 스냅샷과 호환). */
+export function assetKindOf(row: SheetRow): AssetKind {
+  const id = String(row.kind ?? '').trim().toLowerCase()
+  return ASSET_KINDS.find((k) => k.id === id) ?? ASSET_KINDS[0]
+}
+
+/** 가장 최근 스냅샷 날짜. 없으면 빈 문자열. */
+export function latestAssetsDate(workbook: Workbook): string {
   const dates = workbook.assets
     .map((row) => String(row.snapshot_date).slice(0, 10))
     .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
-  if (dates.length === 0) return { date: '', total: 0 }
-  const latest = dates.sort().reverse()[0]
+  return dates.length ? dates.sort().reverse()[0] : ''
+}
+
+/** 최신 스냅샷의 행들. */
+export function latestAssetRows(workbook: Workbook): SheetRow[] {
+  const latest = latestAssetsDate(workbook)
+  return latest ? workbook.assets.filter((row) => String(row.snapshot_date).slice(0, 10) === latest) : []
+}
+
+/**
+ * 최신 스냅샷 날짜의 자산 합계(USD 환산). 행에 fx_usd_krw 가 있으면 그 환율을 쓴다.
+ * liquid 는 그중 아무 때나 빼 쓸 수 있는 돈(kind=cash)만 더한 값이다.
+ */
+export function latestAssetsTotal(workbook: Workbook): { date: string; total: number; liquid: number } {
+  const latest = latestAssetsDate(workbook)
+  if (!latest) return { date: '', total: 0, liquid: 0 }
   const fx = configNumber(workbook.config, 'fx_usd_krw', 1332)
-  const total = workbook.assets
-    .filter((row) => String(row.snapshot_date).slice(0, 10) === latest)
-    .reduce((acc, row) => acc + assetUsd(row, fx), 0)
-  return { date: latest, total: Math.round(total * 100) / 100 }
+  let total = 0
+  let liquid = 0
+  latestAssetRows(workbook).forEach((row) => {
+    const usd = assetUsd(row, fx)
+    total += usd
+    if (assetKindOf(row).liquid) liquid += usd
+  })
+  return { date: latest, total: Math.round(total * 100) / 100, liquid: Math.round(liquid * 100) / 100 }
 }
 
 /** 자산 행 하나의 USD 환산액. 스냅샷 당시 환율(fx_usd_krw 열)이 있으면 그 값을 쓴다. */
@@ -319,6 +379,13 @@ export function statusBadge(row: SheetRow): { label: string; tone: 'reserved' | 
 export function recurringTypeOf(row: SheetRow): 'income' | 'expense' | 'transfer' {
   const t = String(row.type ?? '').trim().toLowerCase()
   return t === 'income' || t === 'transfer' ? t : 'expense'
+}
+
+/** month 에서 delta 개월 옮긴 'YYYY-MM'. 달력을 넘길 때 쓴다. */
+export function shiftMonth(month: string, delta: number): string {
+  const [y, m] = month.split('-').map(Number)
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1))
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
 /** fromMonth 를 마지막으로 count 개월(오래된 순). */

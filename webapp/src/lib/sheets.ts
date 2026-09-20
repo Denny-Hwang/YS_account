@@ -3,9 +3,19 @@
  * 별도 백엔드가 없다. 시트 공유 권한이 곧 접근 권한이다.
  */
 
-import { forgetToken, getAccessToken } from './auth'
+import { AuthRequiredError, forgetToken, getAccessToken } from './auth'
 
 const API = 'https://sheets.googleapis.com/v4/spreadsheets'
+
+/** Sheets API 오류를 사람이 읽을 문장으로 바꾼다. 원문은 뒤에 짧게 붙인다. */
+function describeError(status: number, body: string): string {
+  const detail = body.replace(/\s+/g, ' ').slice(0, 160)
+  if (status === 403) return `이 시트를 읽거나 쓸 권한이 없습니다. 시트가 이 구글 계정에 편집자로 공유돼 있는지 확인하세요. (${detail})`
+  if (status === 404) return `시트를 찾지 못했습니다. 설정의 스프레드시트 주소를 확인하세요. (${detail})`
+  if (status === 429) return '구글 시트 요청이 너무 잦습니다. 잠시 뒤 새로고침하세요.'
+  if (status >= 500) return `구글 시트 서버 오류(${status})입니다. 잠시 뒤 다시 시도하세요.`
+  return `Sheets API ${status}: ${detail}`
+}
 
 export interface Table {
   headers: string[]
@@ -19,8 +29,9 @@ export interface SheetsContext {
 }
 
 async function request<T>(ctx: SheetsContext, path: string, init?: RequestInit): Promise<T> {
-  const send = async (interactive: boolean): Promise<Response> => {
-    const token = await getAccessToken(ctx.clientId, interactive)
+  const send = async (): Promise<Response> => {
+    // 토큰이 없으면 조용히 받아 본다. 팝업이 막히면 AuthRequiredError 가 올라가 화면이 "연결" 버튼을 보여 준다.
+    const token = await getAccessToken(ctx.clientId, 'silent')
     return fetch(`${API}/${ctx.spreadsheetId}${path}`, {
       ...init,
       headers: {
@@ -31,15 +42,16 @@ async function request<T>(ctx: SheetsContext, path: string, init?: RequestInit):
     })
   }
 
-  let response = await send(false)
+  let response = await send()
   if (response.status === 401) {
-    // 토큰이 만료됐다. 한 번만 다시 받아 본다.
+    // 토큰이 만료됐거나 취소됐다. 한 번만 다시 받아 본다.
     forgetToken()
-    response = await send(true)
+    response = await send()
   }
   if (!response.ok) {
     const body = await response.text()
-    throw new Error(`Sheets API ${response.status}: ${body.slice(0, 300)}`)
+    if (response.status === 401) throw new AuthRequiredError()
+    throw new Error(describeError(response.status, body))
   }
   return (await response.json()) as T
 }
@@ -81,10 +93,20 @@ export async function appendValues(
   name: string,
   values: (string | number)[]
 ): Promise<void> {
+  await appendManyValues(ctx, name, [values])
+}
+
+/** 탭 끝에 여러 행을 한 번에 추가한다. 자산 스냅샷처럼 같은 날짜의 행 묶음에 쓴다. */
+export async function appendManyValues(
+  ctx: SheetsContext,
+  name: string,
+  rows: (string | number)[][]
+): Promise<void> {
+  if (rows.length === 0) return
   await request(
     ctx,
     `/values/${encodeURIComponent(`'${name}'`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-    { method: 'POST', body: JSON.stringify({ values: [values] }) }
+    { method: 'POST', body: JSON.stringify({ values: rows }) }
   )
 }
 

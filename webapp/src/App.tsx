@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Card, Notice } from './components/Ui'
-import { getAccessToken, hasToken, signOut } from './lib/auth'
+import { AuthRequiredError, getAccessToken, hasToken, signOut } from './lib/auth'
 import { loadWorkbook, todayIn, type Workbook } from './lib/ledger'
 import { isConfigured, loadSettings, saveSettings, type Settings } from './lib/settings'
 import type { SheetsContext } from './lib/sheets'
@@ -49,10 +49,19 @@ const TABS: Array<{ id: Screen; label: string }> = [
   { id: 'more', label: '더보기' },
 ]
 
+/** 앱으로 돌아왔을 때 이보다 오래된 데이터면 다시 읽는다. */
+const STALE_MS = 2 * 60 * 1000
+
+/** 'hh:mm'. 마지막 읽기 시각 표시용. */
+function clock(ts: number): string {
+  const d = new Date(ts)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 const MORE_ITEMS: Array<{ id: Screen; label: string; hint: string }> = [
   { id: 'recurring', label: '고정비', hint: '정기 항목의 예상 금액과 이번 달 확정 여부' },
   { id: 'debts', label: '부채', hint: '남은 원금과 월 상환액' },
-  { id: 'assets', label: '자산', hint: '계좌별 잔액 스냅샷' },
+  { id: 'assets', label: '자산', hint: '계좌 잔액·주식·연금·401k·HSA 종류별 스냅샷' },
   { id: 'goals', label: '목표', hint: '목표액 대비 진행률' },
   { id: 'setup', label: '설정', hint: '시트 연결과 로그아웃' },
 ]
@@ -63,7 +72,11 @@ export function App() {
   const [workbook, setWorkbook] = useState<Workbook | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 사람이 "연결" 을 눌러야 하는 상태. 팝업이 막혔거나 30일 재검증 때다. 오류가 아니라 안내로 보여 준다.
+  const [authNeeded, setAuthNeeded] = useState<string | null>(null)
   const [signedIn, setSignedIn] = useState(false)
+  // 마지막으로 시트를 읽은 시각. 화면에 "hh:mm 기준" 으로 보여 주고, 앱으로 돌아왔을 때 오래됐으면 다시 읽는다.
+  const [loadedAt, setLoadedAt] = useState<number | null>(null)
 
   const clientId = settings.clientId.trim()
   const spreadsheetId = settings.spreadsheetId.trim()
@@ -76,9 +89,16 @@ export function App() {
     try {
       const data = await loadWorkbook({ clientId, spreadsheetId })
       setWorkbook(data)
+      setLoadedAt(Date.now())
       setSignedIn(hasToken())
+      setAuthNeeded(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      if (err instanceof AuthRequiredError) {
+        setAuthNeeded(err.message)
+        setSignedIn(false)
+      } else {
+        setError(err instanceof Error ? err.message : String(err))
+      }
     } finally {
       setLoading(false)
     }
@@ -88,14 +108,33 @@ export function App() {
     void refresh()
   }, [refresh])
 
+  // 다른 사람이 봇으로 기록한 뒤 앱으로 돌아오면 숫자가 옛것일 수 있다.
+  // 앱이 다시 보일 때 마지막 읽기가 STALE_MS 보다 오래됐고 토큰이 살아 있으면(팝업 없이 되면) 조용히 다시 읽는다.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      if (loadedAt === null || Date.now() - loadedAt < STALE_MS) return
+      if (!hasToken()) return
+      void refresh()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [loadedAt, refresh])
+
   async function connect() {
     setError(null)
     try {
-      await getAccessToken(clientId, true)
+      await getAccessToken(clientId, 'user')
       setSignedIn(true)
+      setAuthNeeded(null)
       await refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      if (err instanceof AuthRequiredError) setAuthNeeded(err.message)
+      else setError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -127,7 +166,10 @@ export function App() {
       <header className="topbar">
         <div>
           <h1>{TITLES[screen]}</h1>
-          <p className="sub">{today}</p>
+          <p className="sub">
+            {today}
+            {loadedAt !== null && ` · ${clock(loadedAt)} 기준`}
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {!TABS.some((t) => t.id === screen) && (
@@ -154,6 +196,17 @@ export function App() {
         <Notice kind="info">설정에서 클라이언트 ID 와 시트 주소를 먼저 입력하세요.</Notice>
       )}
 
+      {authNeeded && !error && screen !== 'setup' && (
+        <Notice kind="info">
+          <span className="row" style={{ gap: 10 }}>
+            <span className="grow">{authNeeded}</span>
+            <button className="primary" onClick={() => void connect()} disabled={loading}>
+              연결
+            </button>
+          </span>
+        </Notice>
+      )}
+
       {screen === 'setup' && (
         <Setup
           settings={settings}
@@ -178,7 +231,7 @@ export function App() {
         </Card>
       )}
 
-      {screen !== 'setup' && screen !== 'more' && configured && !ready && !error && (
+      {screen !== 'setup' && screen !== 'more' && configured && !ready && !error && !authNeeded && (
         <Notice kind="info">
           {loading ? '시트를 불러오는 중입니다.' : '구글 계정 연결이 필요합니다.'}
           {!loading && (

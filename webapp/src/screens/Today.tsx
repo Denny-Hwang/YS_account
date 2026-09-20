@@ -5,9 +5,20 @@ import { classify } from '@shared/Classifier.js'
 import { matchRecurringName } from '@shared/LedgerRules.js'
 import { Bullet, MonthlyBars, Stat } from '../components/Charts'
 import { Card, Empty, Notice } from '../components/Ui'
-import { budgetAmount, categoryOptions, configList, configNumber, monthTransactions, recordParsed, type Workbook } from '../lib/ledger'
+import { budgetAmount, categoryOptions, configList, configNumber, monthTransactions, recordParsed, softDeleteTransaction, type Workbook } from '../lib/ledger'
 import { emergencyFund, recentDaily, savingsPlan } from '../lib/metrics'
 import type { SheetsContext } from '../lib/sheets'
+
+const DETAIL_KEY = 'family-budget.today-detail.v1'
+
+/** 자세히 칸을 펼쳐 둘지. 한 번도 안 만졌으면 펼친다. */
+function readDetail(): boolean {
+  try {
+    return localStorage.getItem(DETAIL_KEY) !== 'closed'
+  } catch {
+    return true
+  }
+}
 
 export function Today({
   workbook,
@@ -21,13 +32,23 @@ export function Today({
   onChanged: () => void
 }) {
   const [quick, setQuick] = useState('')
-  // 자세히 칸은 기본으로 접혀 있다. 평소에는 한 줄 입력만으로 지금까지처럼 기록된다.
-  const [detail, setDetail] = useState(false)
+  // 자세히 칸은 기본으로 펼쳐져 있다. 접어 두면 이 기기에서는 다음에도 접힌 채로 열린다.
+  const [detail, setDetailState] = useState(() => readDetail())
+  function setDetail(next: boolean) {
+    setDetailState(next)
+    try {
+      localStorage.setItem(DETAIL_KEY, next ? 'open' : 'closed')
+    } catch {
+      // 저장이 막힌 브라우저에서는 이번 화면에서만 유지된다
+    }
+  }
   const [date, setDate] = useState('')
   const [category, setCategory] = useState('')
   const [type, setType] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null)
+  // 방금 새로 추가한 행의 id. 잘못 적었을 때 한 번에 되돌릴 수 있게 한다. 확정(confirm)은 되돌리기 대상이 아니다.
+  const [lastTxId, setLastTxId] = useState<string | null>(null)
 
   const month = today.slice(0, 7)
   const envelopes = configList(workbook.config, 'envelopes')
@@ -88,6 +109,7 @@ export function Today({
       setCategory('')
       setType('')
       const amount = formatUsd(Math.abs(Number(parsed.amount_usd)))
+      setLastTxId(result.mode === 'confirm' ? null : result.txId)
       setMessage({
         kind: 'info',
         text:
@@ -105,9 +127,38 @@ export function Today({
     }
   }
 
+  // 되돌릴 행은 새로고침된 원장에서 찾는다. 아직 안 읽혔으면 버튼이 잠시 비활성이다.
+  const lastRow = lastTxId ? workbook.transactions.find((r) => String(r.id) === lastTxId) ?? null : null
+
+  async function undoLast() {
+    if (!lastRow || busy) return
+    setBusy(true)
+    try {
+      await softDeleteTransaction(ctx, workbook, lastRow, 'web')
+      setLastTxId(null)
+      setMessage({ kind: 'info', text: `${String(lastRow.merchant) || '항목'} ${formatUsd(Math.abs(Number(lastRow.amount_usd) || 0))} 기록을 되돌렸습니다.` })
+      onChanged()
+    } catch (err) {
+      setMessage({ kind: 'error', text: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="viz">
-      {message && <Notice kind={message.kind}>{message.text}</Notice>}
+      {message && (
+        <Notice kind={message.kind}>
+          <span className="row" style={{ gap: 10 }}>
+            <span className="grow">{message.text}</span>
+            {message.kind === 'info' && lastTxId && (
+              <button className="ghost" style={{ padding: '2px 10px' }} disabled={!lastRow || busy} onClick={() => void undoLast()}>
+                되돌리기
+              </button>
+            )}
+          </span>
+        </Notice>
+      )}
 
       <Card>
         <div className="stat-row">
@@ -131,7 +182,7 @@ export function Today({
               className="ghost"
               type="button"
               aria-expanded={detail}
-              onClick={() => setDetail((d) => !d)}
+              onClick={() => setDetail(!detail)}
               style={{ padding: '2px 10px' }}
             >
               {detail ? '자세히 닫기' : '자세히'}
@@ -227,7 +278,7 @@ export function Today({
             tone="income"
             hint={
               fund.assetsDate
-                ? `자산 ${formatUsd(fund.assets)} (${fund.assetsDate}) = 고정비 ${fund.covered ?? 0}개월분 · 목표 ${formatUsd(fund.target)}`
+                ? `계좌 잔액 ${formatUsd(fund.assets)} (${fund.assetsDate}) = 고정비 ${fund.covered ?? 0}개월분 · 목표 ${formatUsd(fund.target)}`
                 : `자산 스냅샷이 없습니다. 더보기 › 자산에서 잔액을 넣으면 몇 개월분인지 보입니다 · 목표 ${formatUsd(fund.target)}`
             }
           />
