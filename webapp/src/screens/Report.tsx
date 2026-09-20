@@ -43,7 +43,8 @@ export function Report({ workbook, today }: { workbook: Workbook; today: string 
         <div className="stat-row">
           <Stat label="이달 순저축" value={formatUsd(current.net)} tone={current.net < 0 ? 'bad' : 'good'} sub={savingRate !== null ? `저축률 ${savingRate}%` : '수입 기록 없음'} />
           <Stat label="12개월 월평균 순저축" value={formatUsd(avgNet)} size="md" tone={avgNet < 0 ? 'bad' : undefined} />
-          <Stat label="이달 수입 / 지출" value={`${formatUsd(current.income)} / ${formatUsd(current.expense)}`} size="md" />
+          <Stat label="이달 수입" value={formatUsd(current.income)} size="md" />
+          <Stat label="이달 지출" value={formatUsd(current.expense)} size="md" />
         </div>
       </Card>
 
@@ -131,7 +132,7 @@ export function Report({ workbook, today }: { workbook: Workbook; today: string 
 
       {merchants.length > 0 && (
         <Card title={`${selected} 많이 쓴 곳`}>
-          <RankBars items={merchants.map((m) => ({ name: m.name, value: m.value, hint: `${m.count}회` }))} />
+          <RankBars items={merchants.map((m) => ({ name: `${m.name} · ${m.count}회`, value: m.value }))} />
         </Card>
       )}
 

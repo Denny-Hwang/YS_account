@@ -151,16 +151,18 @@ export function Income({ workbook, ctx, today, onChanged }: { workbook: Workbook
                         )
                       })
                     )}
-                    <div className="row controls" style={{ marginTop: 8 }}>
-                      <span className="meta grow">
+                    <div className="detail-foot">
+                      <span className="meta">
                         {s.rows.length > 0 && `${s.rows.length}건 · 항목을 누르면 고칠 수 있습니다`}
                       </span>
-                      <button className="ghost" style={{ padding: '4px 12px' }} onClick={() => setEditing(s.row)}>
-                        수입원 수정
-                      </button>
-                      <button className="ghost" style={{ padding: '4px 12px' }} disabled={busy} onClick={() => void toggleActive(s.row)}>
-                        {isActive ? '중지' : '사용'}
-                      </button>
+                      <span className="btns">
+                        <button className="ghost" style={{ padding: '4px 12px' }} onClick={() => setEditing(s.row)}>
+                          수입원 수정
+                        </button>
+                        <button className="ghost" style={{ padding: '4px 12px' }} disabled={busy} onClick={() => void toggleActive(s.row)}>
+                          {isActive ? '중지' : '사용'}
+                        </button>
+                      </span>
                     </div>
                   </div>
                 )}

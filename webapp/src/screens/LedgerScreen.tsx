@@ -49,8 +49,16 @@ function readView(): 'list' | 'calendar' {
   }
 }
 
-const TYPES = ['expense', 'income', 'transfer']
-const KINDS = ['variable', 'fixed']
+// 시트 값은 영어지만 화면에는 우리말로 보여 준다
+const TYPES: Array<{ value: string; label: string }> = [
+  { value: 'expense', label: '지출' },
+  { value: 'income', label: '수입' },
+  { value: 'transfer', label: '저축(이동)' },
+]
+const KINDS: Array<{ value: string; label: string }> = [
+  { value: 'variable', label: '유동' },
+  { value: 'fixed', label: '고정' },
+]
 
 export function LedgerScreen({
   workbook,
@@ -384,8 +392,8 @@ export function TransactionEditSheet({
           <label>유형</label>
           <select value={form.type} onChange={(e) => set('type', e.target.value)}>
             {TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
+              <option key={t.value} value={t.value}>
+                {t.label}
               </option>
             ))}
           </select>
@@ -394,8 +402,8 @@ export function TransactionEditSheet({
           <label>구분</label>
           <select value={form.kind} onChange={(e) => set('kind', e.target.value)}>
             {KINDS.map((k) => (
-              <option key={k} value={k}>
-                {k}
+              <option key={k.value} value={k.value}>
+                {k.label}
               </option>
             ))}
           </select>

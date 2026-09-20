@@ -23,7 +23,7 @@ export function Debts({ workbook, ctx, today, onChanged }: { workbook: Workbook;
   return (
     <div className="viz">
       {error && <Notice kind="error">{error}</Notice>}
-      <Card action={<button onClick={() => setEditing('new')}>추가</button>}>
+      <Card title="부채 요약" action={<button onClick={() => setEditing('new')}>부채 추가</button>}>
         <div className="stat-row">
           <Stat label="남은 원금" value={formatUsd(overview.totalPrincipal)} />
           <Stat label="월 상환 합계" value={formatUsd(overview.totalMonthly)} size="md" sub={`가중 평균 이율 ${overview.weightedRate.toFixed(1)}%`} />
@@ -157,7 +157,7 @@ export function Assets({ workbook, ctx, today, onChanged }: { workbook: Workbook
           시트의 Assets 탭에 아직 <code>kind</code> 열이 없어 종류를 저장할 수 없습니다. Apps Script 편집기에서 <code>Setup.gs</code> 의 <code>setupSheet</code> 를 한 번 실행하면 열이 붙습니다.
         </Notice>
       )}
-      <Card action={<button className="primary" onClick={() => setSnapshot(true)}>새 스냅샷</button>}>
+      <Card title={latest.date ? `${latest.date} 스냅샷` : '스냅샷 없음'} action={<button className="primary" onClick={() => setSnapshot(true)}>새 스냅샷</button>}>
         <div className="stat-row">
           <Stat label="자산 합계" value={formatUsd(latest.total)} sub={latest.date ? `${latest.date} 기준` : '기록 없음'} />
           <Stat label="바로 쓸 수 있는 돈" value={formatUsd(latest.liquid)} size="md" sub="계좌 잔액만" tone="good" />
@@ -431,7 +431,7 @@ export function Goals({ workbook, ctx, today, onChanged }: { workbook: Workbook;
   return (
     <div className="viz">
       {error && <Notice kind="error">{error}</Notice>}
-      <Card action={<button onClick={() => setEditing('new')}>추가</button>}>
+      <Card title="지금 상태" action={<button onClick={() => setEditing('new')}>목표 추가</button>}>
         <div className="stat-row">
           <Stat label="현재 자산" value={formatUsd(assets.total)} size="md" sub={assets.date ? `${assets.date} · 바로 쓸 수 있는 돈 ${formatUsd(assets.liquid)}` : '스냅샷 없음'} />
           <Stat label="최근 6개월 월평균 순저축" value={formatUsd(avg)} size="md" tone={avg < 0 ? 'bad' : undefined} />

@@ -123,10 +123,7 @@ export function RankBars({
       {items.map((it) => (
         <div className={`item${onSelect ? ' clickable' : ''}`} key={it.name} onClick={onSelect ? () => onSelect(it.name) : undefined}>
           <div className="row">
-            <span className="ellipsis">
-              {it.name}
-              {it.hint && <span className="meta"> · {it.hint}</span>}
-            </span>
+            <span className="ellipsis">{it.name}</span>
             <span className="meta" style={{ whiteSpace: 'nowrap' }}>
               {format(it.value)}
               {total > 0 && <> · {((it.value / total) * 100).toFixed(0)}%</>}
@@ -141,6 +138,8 @@ export function RankBars({
           <div className="track">
             <span style={{ width: `${Math.max((it.value / max) * 100, 1)}%`, background: VAR[tone] }} />
           </div>
+          {/* 설명은 막대 아래 줄에. 이름 옆에 붙이면 좁은 화면에서 "…" 으로 잘린다 */}
+          {it.hint && <p className="meta rank-hint">{it.hint}</p>}
         </div>
       ))}
     </div>

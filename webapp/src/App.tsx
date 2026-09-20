@@ -217,7 +217,7 @@ export function App() {
       )}
 
       {screen === 'more' && (
-        <Card title="더보기">
+        <Card>
           {MORE_ITEMS.map((item) => (
             <div className="tx" key={item.id} onClick={() => setScreen(item.id)}>
               <span className="grow">
