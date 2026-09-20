@@ -123,6 +123,29 @@ export function columnLetter(index: number): string {
 }
 
 /**
+ * 행들의 값을 전부 비운다. 행 자체는 지우지 않는다(행 번호가 밀리면 같은 화면에서 이어지는 편집이
+ * 엉뚱한 행을 건드린다). 비운 행은 읽을 때 걸러지므로 화면에서는 사라진 것과 같다.
+ * 원장(Transactions)은 이 함수를 쓰지 않는다. 원장은 status=deleted 로만 지운다.
+ */
+export async function clearRows(
+  ctx: SheetsContext,
+  name: string,
+  rowNumbers: number[],
+  width: number
+): Promise<void> {
+  if (rowNumbers.length === 0 || width <= 0) return
+  const blank = new Array<string>(width).fill('')
+  const data = rowNumbers.map((r) => ({
+    range: `'${name}'!A${r}:${columnLetter(width - 1)}${r}`,
+    values: [blank],
+  }))
+  await request(ctx, `/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({ valueInputOption: 'RAW', data }),
+  })
+}
+
+/**
  * 한 행의 특정 셀들만 쓴다. 행 전체를 덮어쓰지 않으므로
  * 그 사이 다른 사람이 고친 다른 열을 되돌리지 않는다(lost update 방지).
  * 행을 지우지 않는다(soft delete 만 쓴다).

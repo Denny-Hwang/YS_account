@@ -3,7 +3,7 @@ import { formatUsd } from '@shared/Budget.js'
 import { Bullet, LineChart, RankBars, Stat } from '../components/Charts'
 import { RowSheet } from '../components/RowSheet'
 import { Card, Empty, Notice, Sheet } from '../components/Ui'
-import { ASSET_KINDS, TABS, appendManyTo, assetKindOf, latestAssetRows, latestAssetsTotal, monthsBack, nextIdFor, type SheetRow, type Workbook } from '../lib/ledger'
+import { ASSET_KINDS, TABS, appendManyTo, assetKindOf, latestAssetRows, latestAssetsTotal, monthsBack, nextIdFor, removeRows, type SheetRow, type Workbook } from '../lib/ledger'
 import { assetsByKind, assetsHistory, averageNet, debtOverview, debtSchedule, emergencyFund, monthlyTotals } from '../lib/metrics'
 import type { SheetsContext } from '../lib/sheets'
 
@@ -130,6 +130,24 @@ export function Assets({ workbook, ctx, today, onChanged }: { workbook: Workbook
   const fx = Number(workbook.config.fx_usd_krw) || 1332
   const hasKindColumn = workbook.tables[TABS.assets]?.headers.includes('kind')
   const locked = latest.total - latest.liquid
+  const [busy, setBusy] = useState(false)
+
+  /** 최신 스냅샷을 통째로 비운다. 같은 스냅샷을 두 번 저장했을 때 한 번에 정리하는 용도다. */
+  async function removeLatestSnapshot() {
+    const rows = latestAssetRows(workbook)
+    if (rows.length === 0) return
+    if (!window.confirm(`${latest.date} 스냅샷 ${rows.length}줄을 전부 지울까요? 되돌릴 수 없습니다.`)) return
+    setBusy(true)
+    setError(null)
+    try {
+      await removeRows(ctx, workbook, TABS.assets, rows)
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div className="viz">
@@ -188,7 +206,13 @@ export function Assets({ workbook, ctx, today, onChanged }: { workbook: Workbook
             </Card>
           ))}
           <p className="meta">
-            항목을 누르면 고칠 수 있습니다. 원화 자산은 그날 환율로 달러 환산해 합칩니다. 비상금(고정비 N개월치)은 계좌 잔액만으로 셉니다.
+            항목을 누르면 고치거나 지울 수 있습니다. 원화 자산은 그날 환율로 달러 환산해 합칩니다. 비상금(고정비 N개월치)은 계좌 잔액만으로 셉니다.
+          </p>
+          <p className="meta" style={{ marginTop: 4 }}>
+            <button className="ghost danger" style={{ padding: '4px 12px' }} disabled={busy} onClick={() => void removeLatestSnapshot()}>
+              {latest.date} 스냅샷 전체 지우기
+            </button>
+            <span> 같은 날짜를 두 번 저장했을 때 씁니다. 지운 뒤 "새 스냅샷" 으로 다시 넣으면 됩니다.</span>
           </p>
         </>
       )}
@@ -235,6 +259,8 @@ export function Assets({ workbook, ctx, today, onChanged }: { workbook: Workbook
             setEditing(null)
             onChanged()
           }}
+          onDelete={(row) => removeRows(ctx, workbook, TABS.assets, [row])}
+          deleteLabel="이 항목 삭제"
         />
       )}
     </div>
@@ -260,15 +286,25 @@ function SnapshotSheet({ workbook, ctx, today, onClose, onSaved, onError }: { wo
   const [lines, setLines] = useState<SnapshotLine[]>(() => {
     const previous = latestAssetRows(workbook)
     if (previous.length > 0) {
-      return previous.map((row) => ({
-        account: String(row.account ?? ''),
-        kind: assetKindOf(row).id,
-        balance: String(row.balance ?? ''),
-        currency: String(row.currency || 'USD').toUpperCase(),
-      }))
+      // 직전 스냅샷이 두 벌 저장돼 있어도 계좌마다 한 줄만 깐다(같은 계좌·종류·통화는 마지막 값).
+      const byKey = new Map<string, SnapshotLine>()
+      previous.forEach((row) => {
+        const line = {
+          account: String(row.account ?? ''),
+          kind: assetKindOf(row).id,
+          balance: String(row.balance ?? ''),
+          currency: String(row.currency || 'USD').toUpperCase(),
+        }
+        byKey.set(`${line.account.trim()}|${line.kind}|${line.currency}`, line)
+      })
+      return Array.from(byKey.values())
     }
     return ASSET_KINDS.filter((k) => k.example).map((k) => ({ account: k.example, kind: k.id, balance: '', currency: k.currency }))
   })
+
+  // 같은 날짜에 이미 저장된 줄. 그대로 저장하면 두 벌이 되므로 기본으로 먼저 비우고 넣는다.
+  const sameDay = workbook.assets.filter((row) => String(row.snapshot_date).slice(0, 10) === date)
+  const [replace, setReplace] = useState(true)
 
   function update(i: number, patch: Partial<SnapshotLine>) {
     setLines((ls) => ls.map((l, k) => (k === i ? { ...l, ...patch } : l)))
@@ -292,6 +328,7 @@ function SnapshotSheet({ workbook, ctx, today, onClose, onSaved, onError }: { wo
     }
     setBusy(true)
     try {
+      if (sameDay.length > 0 && replace) await removeRows(ctx, workbook, TABS.assets, sameDay)
       await appendManyTo(
         ctx,
         workbook,
@@ -329,6 +366,14 @@ function SnapshotSheet({ workbook, ctx, today, onClose, onSaved, onError }: { wo
       <p className="meta" style={{ margin: '8px 0 4px' }}>
         잔액만 고치면 됩니다. 비워 둔 줄은 저장하지 않습니다. 원화 계좌는 위 환율로 달러 환산됩니다.
       </p>
+      {sameDay.length > 0 && (
+        <label className="meta" style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0 8px' }}>
+          <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} style={{ width: 'auto' }} />
+          <span>
+            {date} 에 이미 {sameDay.length}줄이 있습니다. 체크하면 그 줄들을 지우고 이 내용으로 바꿉니다. 풀면 뒤에 덧붙입니다.
+          </span>
+        </label>
+      )}
       {lines.map((l, i) => (
         <div className="snap-line" key={i}>
           <div className="row" style={{ gap: 6 }}>
