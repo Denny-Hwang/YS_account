@@ -224,6 +224,7 @@ table.data th { color: var(--muted); font-weight: 500; font-size: 12px; }
 .rank .item .row { margin-bottom: 4px; }
 .rank .track { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .rank .track > span { display: block; height: 100%; border-radius: 999px; background: var(--series-income); }
+.rank .rank-hint { margin: 4px 0 0; font-size: 12px; }
 
 /* ── 차트 부품 (P10) ───────────────────────────── */
 .legend .swatch.dashed { background: none; border-top: 2px dashed; height: 0; width: 14px; border-radius: 0; vertical-align: 2px; }
@@ -275,9 +276,17 @@ svg.line .grid { stroke: var(--grid); stroke-width: 1; vector-effect: non-scalin
 @media (min-width: 420px) { .tabbar button { padding: 8px 12px; font-size: 13px; } }
 
 /* ── 원장 보기 전환과 상태 배지 ───────────────────────────── */
-/* 좁은 화면에서 줄바꿈을 허용하는 제어 줄. 글자가 세로로 쪼개지지 않게 한다 */
+/* 좁은 화면에서 줄바꿈을 허용하는 제어 줄. 버튼·선택 상자 글자가 세로로 쪼개지지 않게 한다.
+   설명 글(span.meta)은 예외다. 안 그러면 긴 문장이 옆 버튼 밑으로 파고든다 */
 .row.controls { flex-wrap: wrap; row-gap: 8px; }
-.row.controls > * { white-space: nowrap; }
+.row.controls > button, .row.controls > select, .row.controls > label,
+.row.controls > .seg, .row.controls > .month-nav { white-space: nowrap; }
+
+/* 펼친 목록 아래 줄: 건수 설명은 접히고 버튼은 오른쪽에 모인다 */
+.detail-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.detail-foot .meta { flex: 1 1 160px; min-width: 0; }
+.detail-foot .btns { display: flex; gap: 6px; margin-left: auto; }
+.detail-foot .btns button { white-space: nowrap; }
 
 /* 달 이동: ‹ [2026-09 ▾] › */
 .month-nav { display: inline-flex; align-items: center; gap: 2px; }
