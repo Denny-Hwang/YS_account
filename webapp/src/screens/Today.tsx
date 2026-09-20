@@ -9,6 +9,17 @@ import { budgetAmount, categoryOptions, configList, configNumber, monthTransacti
 import { emergencyFund, recentDaily, savingsPlan } from '../lib/metrics'
 import type { SheetsContext } from '../lib/sheets'
 
+const DETAIL_KEY = 'family-budget.today-detail.v1'
+
+/** 자세히 칸을 펼쳐 둘지. 한 번도 안 만졌으면 펼친다. */
+function readDetail(): boolean {
+  try {
+    return localStorage.getItem(DETAIL_KEY) !== 'closed'
+  } catch {
+    return true
+  }
+}
+
 export function Today({
   workbook,
   ctx,
@@ -21,8 +32,16 @@ export function Today({
   onChanged: () => void
 }) {
   const [quick, setQuick] = useState('')
-  // 자세히 칸은 기본으로 접혀 있다. 평소에는 한 줄 입력만으로 지금까지처럼 기록된다.
-  const [detail, setDetail] = useState(false)
+  // 자세히 칸은 기본으로 펼쳐져 있다. 접어 두면 이 기기에서는 다음에도 접힌 채로 열린다.
+  const [detail, setDetailState] = useState(() => readDetail())
+  function setDetail(next: boolean) {
+    setDetailState(next)
+    try {
+      localStorage.setItem(DETAIL_KEY, next ? 'open' : 'closed')
+    } catch {
+      // 저장이 막힌 브라우저에서는 이번 화면에서만 유지된다
+    }
+  }
   const [date, setDate] = useState('')
   const [category, setCategory] = useState('')
   const [type, setType] = useState('')
@@ -131,7 +150,7 @@ export function Today({
               className="ghost"
               type="button"
               aria-expanded={detail}
-              onClick={() => setDetail((d) => !d)}
+              onClick={() => setDetail(!detail)}
               style={{ padding: '2px 10px' }}
             >
               {detail ? '자세히 닫기' : '자세히'}
