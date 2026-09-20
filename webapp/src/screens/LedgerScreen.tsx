@@ -196,7 +196,7 @@ export function LedgerScreen({
       </Card>
 
       {editing && (
-        <EditSheet
+        <TransactionEditSheet
           row={editing}
           workbook={workbook}
           ctx={ctx}
@@ -219,7 +219,8 @@ export function LedgerScreen({
   )
 }
 
-function EditSheet({
+/** 원장 한 행을 고치는 시트. 원장 탭과 수입 탭이 같이 쓴다. */
+export function TransactionEditSheet({
   row,
   workbook,
   ctx,

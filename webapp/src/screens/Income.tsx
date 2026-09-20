@@ -3,9 +3,10 @@ import { formatUsd } from '@shared/Budget.js'
 import { Bullet, Stat } from '../components/Charts'
 import { RowSheet } from '../components/RowSheet'
 import { Card, Empty, Notice } from '../components/Ui'
-import { TABS, availableMonths, nextIdFor, patchIn, type SheetRow, type Workbook } from '../lib/ledger'
-import { incomePlan, paydaysOf } from '../lib/metrics'
+import { TABS, availableMonths, nextIdFor, patchIn, patchTransaction, statusBadge, type SheetRow, type Workbook } from '../lib/ledger'
+import { incomePlan, paydaysOf, type RecurringActual } from '../lib/metrics'
 import type { SheetsContext } from '../lib/sheets'
+import { TransactionEditSheet } from './LedgerScreen'
 
 const STATUS_LABEL: Record<string, string> = { expected: '예정', confirmed: '확정', active: '기록됨', deleted: '삭제됨' }
 
@@ -14,6 +15,10 @@ export function Income({ workbook, ctx, today, onChanged }: { workbook: Workbook
   const months = availableMonths(workbook, today)
   const [month, setMonth] = useState(months[0] ?? today.slice(0, 7))
   const [editing, setEditing] = useState<SheetRow | 'new' | null>(null)
+  // 펼쳐 둔 수입원. 누르면 그 달에 이 수입원으로 들어온 기록이 아래에 나온다.
+  const [open, setOpen] = useState<string | null>(null)
+  const [editingTx, setEditingTx] = useState<SheetRow | null>(null)
+  const [undo, setUndo] = useState<{ row: SheetRow; previousStatus: string; label: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -33,13 +38,46 @@ export function Income({ workbook, ctx, today, onChanged }: { workbook: Workbook
     }
   }
 
+  async function restore() {
+    if (!undo) return
+    try {
+      await patchTransaction(ctx, workbook, undo.row, { status: undo.previousStatus, updated_by: 'web' })
+      setUndo(null)
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  function hintOf(s: RecurringActual): string {
+    if (s.kind !== 'fixed') return `카테고리 "${s.category}" 로 기록된 수입을 합칩니다`
+    const paydays = paydaysOf(s.row, month)
+    if (paydays.length > 0) {
+      return `${month} 급여일 ${paydays.length}번 (${paydays.map((d) => d.slice(8)).join(', ')}일) · 받을 때마다 봇에 "${s.name} 금액" 을 보내면 확정됩니다`
+    }
+    return `${String(s.row.due_day)}일 · 봇에 "${s.name} 금액" 을 보내면 확정됩니다`
+  }
+
   return (
     <div className="viz">
       {error && <Notice kind="error">{error}</Notice>}
+      {undo && (
+        <Notice kind="info">
+          <span className="row" style={{ gap: 10 }}>
+            <span className="grow">{undo.label} 삭제했습니다.</span>
+            <button className="ghost" style={{ padding: '2px 10px' }} onClick={() => void restore()}>
+              되돌리기
+            </button>
+            <button className="ghost" style={{ padding: '2px 10px' }} onClick={() => setUndo(null)}>
+              닫기
+            </button>
+          </span>
+        </Notice>
+      )}
 
       <Card>
         <div className="row">
-          <select value={month} onChange={(e) => setMonth(e.target.value)} style={{ maxWidth: 160 }}>
+          <select value={month} onChange={(e) => { setMonth(e.target.value); setOpen(null) }} style={{ maxWidth: 160 }}>
             {months.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
@@ -60,31 +98,78 @@ export function Income({ workbook, ctx, today, onChanged }: { workbook: Workbook
         {plan.sources.length === 0 ? (
           <Empty>수입원이 없습니다. 위 버튼으로 급여나 레슨을 추가하세요.</Empty>
         ) : (
-          plan.sources.map((s) => (
-            <Bullet
-              key={s.id}
-              label={
-                <>
-                  {s.name} <span className="pill">{s.kind === 'fixed' ? '고정' : '변동'}</span>
-                  {s.status && <span className="pill">{STATUS_LABEL[s.status] ?? s.status}</span>}
-                </>
-              }
-              value={s.actualUsd}
-              target={s.expectedUsd}
-              tone="income"
-              hint={
-                s.kind !== 'fixed'
-                  ? `카테고리 "${s.category}" 로 기록된 수입을 합칩니다`
-                  : paydaysOf(s.row, month).length > 0
-                    ? `${month} 급여일 ${paydaysOf(s.row, month).length}번 (${paydaysOf(s.row, month).map((d) => d.slice(8)).join(', ')}일) · 받을 때마다 봇에 "${s.name} 금액" 을 보내면 확정됩니다`
-                    : `${String(s.row.due_day)}일 · 봇에 "${s.name} 금액" 을 보내면 확정됩니다`
-              }
-              onClick={() => setEditing(s.row)}
-            />
-          ))
+          plan.sources.map((s) => {
+            const expanded = open === s.id
+            const isActive = String(s.row.active).trim().toUpperCase() !== 'N'
+            return (
+              <div key={s.id}>
+                <Bullet
+                  label={
+                    <>
+                      {s.name} <span className="pill">{s.kind === 'fixed' ? '고정' : '변동'}</span>
+                      {s.status && <span className="pill">{STATUS_LABEL[s.status] ?? s.status}</span>}
+                      <span className="meta"> {expanded ? '▴' : '▾'}</span>
+                    </>
+                  }
+                  value={s.actualUsd}
+                  target={s.expectedUsd}
+                  tone="income"
+                  hint={hintOf(s)}
+                  onClick={() => setOpen(expanded ? null : s.id)}
+                />
+                {expanded && (
+                  <div className="detail">
+                    {s.rows.length === 0 ? (
+                      <Empty>{month} 에 이 수입원으로 들어온 기록이 없습니다.</Empty>
+                    ) : (
+                      s.rows.map((row) => {
+                        const badge = statusBadge(row)
+                        return (
+                          <div
+                            className="tx"
+                            key={String(row.id) || row._row}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setEditingTx(row)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') setEditingTx(row)
+                            }}
+                          >
+                            <span className="date">{String(row.date).slice(5, 10)}</span>
+                            <span className="grow ellipsis">
+                              {String(row.merchant) || s.name}
+                              {String(row.memo ?? '').trim() && <span className="meta"> · {String(row.memo)}</span>}
+                              {badge && (
+                                <>
+                                  <br />
+                                  <span className={`pill pill-${badge.tone}`}>{badge.label}</span>
+                                </>
+                              )}
+                            </span>
+                            <span className={`amount income${badge ? ' pending' : ''}`}>+{formatUsd(Number(row.amount_usd) || 0)}</span>
+                          </div>
+                        )
+                      })
+                    )}
+                    <div className="row controls" style={{ marginTop: 8 }}>
+                      <span className="meta grow">
+                        {s.rows.length > 0 && `${s.rows.length}건 · 항목을 누르면 고칠 수 있습니다`}
+                      </span>
+                      <button className="ghost" style={{ padding: '4px 12px' }} onClick={() => setEditing(s.row)}>
+                        수입원 수정
+                      </button>
+                      <button className="ghost" style={{ padding: '4px 12px' }} disabled={busy} onClick={() => void toggleActive(s.row)}>
+                        {isActive ? '중지' : '사용'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })
         )}
         <p className="meta" style={{ marginTop: 10 }}>
-          고정 수입은 매월 예정 행이 자동으로 생기고 실제 금액을 보내면 확정됩니다. 변동 수입은 건별로 기록하면 여기 합산됩니다.
+          수입원을 누르면 그 달에 들어온 기록이 펼쳐집니다. 고정 수입은 매월 예정 행이 자동으로 생기고 실제 금액을 보내면 확정됩니다. 변동 수입은 건별로 기록하면 여기 합산됩니다.
         </p>
       </Card>
 
@@ -123,12 +208,21 @@ export function Income({ workbook, ctx, today, onChanged }: { workbook: Workbook
         />
       )}
 
-      {editing && editing !== 'new' && (
-        <div style={{ position: 'fixed', bottom: 90, left: 0, right: 0, display: 'flex', justifyContent: 'center', zIndex: 30 }}>
-          <button className="ghost" disabled={busy} onClick={() => void toggleActive(editing)}>
-            {String(editing.active).trim().toUpperCase() === 'N' ? '이 수입원 사용' : '이 수입원 중지'}
-          </button>
-        </div>
+      {editingTx && (
+        <TransactionEditSheet
+          row={editingTx}
+          workbook={workbook}
+          ctx={ctx}
+          onClose={() => setEditingTx(null)}
+          onError={setError}
+          onDeleted={(row, previousStatus) =>
+            setUndo({ row, previousStatus, label: `${String(row.merchant) || '(이름 없음)'} ${formatUsd(Number(row.amount_usd) || 0)}` })
+          }
+          onChanged={() => {
+            setEditingTx(null)
+            onChanged()
+          }}
+        />
       )}
     </div>
   )

@@ -293,6 +293,11 @@ svg.line .grid { stroke: var(--grid); stroke-width: 1; vector-effect: non-scalin
 /* 아직 안 나간 돈은 흐리게. 실제로 나간 돈과 한눈에 구분된다 */
 .tx .amount.pending { opacity: 0.6; font-weight: 500; }
 
+/* 불릿 아래 펼쳐지는 세부 목록(수입원별 기록 등). 살짝 들여 써서 어디에 딸린 목록인지 보이게 한다 */
+.detail { margin: 0 0 12px 10px; padding-left: 10px; border-left: 2px solid var(--border); }
+.detail .tx { padding: 8px 0; }
+.detail .empty { padding: 8px 0; text-align: left; }
+
 /* ── 달력 뷰 ──────────────────────────────────────────────── */
 .cal { --cal-gap: 3px; }
 .cal-head, .cal-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--cal-gap); }

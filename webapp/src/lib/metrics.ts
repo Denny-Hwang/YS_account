@@ -163,6 +163,8 @@ export interface RecurringActual {
   expectedUsd: number
   actualUsd: number
   status: string
+  /** 그 달에 이 정의로 묶인 원장 행(삭제 제외, 날짜순). 화면에서 "무엇이 들어왔는지" 를 펼쳐 볼 때 쓴다. */
+  rows: SheetRow[]
 }
 
 /**
@@ -202,7 +204,8 @@ export function recurringActuals(wb: Workbook, month: string, type: 'income' | '
       const counted = hits.filter(isCounted)
       const actual = r2(counted.reduce((a, t) => a + usd(t), 0))
       const status = counted.length ? String(counted[counted.length - 1].status) : hits.length ? String(hits[hits.length - 1].status) : ''
-      return { row, id, name: String(row.name) || id, kind, category, expectedUsd: expectedUsdOf(wb, row, month), actualUsd: actual, status }
+      const rows = hits.slice().sort((a, b) => dayOf(a).localeCompare(dayOf(b)) || a._row - b._row)
+      return { row, id, name: String(row.name) || id, kind, category, expectedUsd: expectedUsdOf(wb, row, month), actualUsd: actual, status, rows }
     })
 }
 
