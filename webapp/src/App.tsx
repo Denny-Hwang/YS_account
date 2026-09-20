@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Card, Notice } from './components/Ui'
-import { getAccessToken, hasToken, signOut } from './lib/auth'
+import { AuthRequiredError, getAccessToken, hasToken, signOut } from './lib/auth'
 import { loadWorkbook, todayIn, type Workbook } from './lib/ledger'
 import { isConfigured, loadSettings, saveSettings, type Settings } from './lib/settings'
 import type { SheetsContext } from './lib/sheets'
@@ -63,6 +63,8 @@ export function App() {
   const [workbook, setWorkbook] = useState<Workbook | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 사람이 "연결" 을 눌러야 하는 상태. 팝업이 막혔거나 30일 재검증 때다. 오류가 아니라 안내로 보여 준다.
+  const [authNeeded, setAuthNeeded] = useState<string | null>(null)
   const [signedIn, setSignedIn] = useState(false)
 
   const clientId = settings.clientId.trim()
@@ -77,8 +79,14 @@ export function App() {
       const data = await loadWorkbook({ clientId, spreadsheetId })
       setWorkbook(data)
       setSignedIn(hasToken())
+      setAuthNeeded(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      if (err instanceof AuthRequiredError) {
+        setAuthNeeded(err.message)
+        setSignedIn(false)
+      } else {
+        setError(err instanceof Error ? err.message : String(err))
+      }
     } finally {
       setLoading(false)
     }
@@ -91,11 +99,13 @@ export function App() {
   async function connect() {
     setError(null)
     try {
-      await getAccessToken(clientId, true)
+      await getAccessToken(clientId, 'user')
       setSignedIn(true)
+      setAuthNeeded(null)
       await refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      if (err instanceof AuthRequiredError) setAuthNeeded(err.message)
+      else setError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -154,6 +164,17 @@ export function App() {
         <Notice kind="info">설정에서 클라이언트 ID 와 시트 주소를 먼저 입력하세요.</Notice>
       )}
 
+      {authNeeded && !error && screen !== 'setup' && (
+        <Notice kind="info">
+          <span className="row" style={{ gap: 10 }}>
+            <span className="grow">{authNeeded}</span>
+            <button className="primary" onClick={() => void connect()} disabled={loading}>
+              연결
+            </button>
+          </span>
+        </Notice>
+      )}
+
       {screen === 'setup' && (
         <Setup
           settings={settings}
@@ -178,7 +199,7 @@ export function App() {
         </Card>
       )}
 
-      {screen !== 'setup' && screen !== 'more' && configured && !ready && !error && (
+      {screen !== 'setup' && screen !== 'more' && configured && !ready && !error && !authNeeded && (
         <Notice kind="info">
           {loading ? '시트를 불러오는 중입니다.' : '구글 계정 연결이 필요합니다.'}
           {!loading && (

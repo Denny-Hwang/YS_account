@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Card, Field, Notice } from '../components/Ui'
+import { connectedEmail, reconsentDate } from '../lib/auth'
 import { extractSpreadsheetId, type Settings } from '../lib/settings'
 
 export function Setup({
@@ -16,6 +17,8 @@ export function Setup({
   const [clientId, setClientId] = useState(settings.clientId)
   const [spreadsheet, setSpreadsheet] = useState(settings.spreadsheetId)
   const [saved, setSaved] = useState(false)
+  const email = connectedEmail()
+  const nextCheck = reconsentDate()
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -64,6 +67,19 @@ export function Setup({
           </div>
           {saved && <p className="meta" style={{ marginTop: 10 }}>저장했습니다.</p>}
         </form>
+      </Card>
+
+      <Card title="로그인 유지">
+        <p className="meta" style={{ margin: 0 }}>
+          {signedIn ? '연결돼 있습니다.' : '지금은 연결돼 있지 않습니다.'}
+          {email && ` 계정 ${email}.`}
+          {nextCheck && ` 다음 재검증 ${nextCheck}.`}
+        </p>
+        <p className="meta" style={{ marginTop: 8 }}>
+          서버가 없어 구글이 1시간짜리 토큰만 줍니다. 토큰은 이 기기에 남겨 두어 1시간 안에는 아무것도 묻지 않고,
+          그 뒤에는 창이 잠깐 떴다 저절로 닫힙니다(같은 계정을 기억해 계정 선택도 건너뜁니다).
+          동의 화면은 30일에 한 번만 다시 뜹니다. 로그아웃하면 기억한 계정도 지웁니다.
+        </p>
       </Card>
 
       <Card title="처음 여는 경우">
