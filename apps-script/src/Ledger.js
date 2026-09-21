@@ -181,7 +181,7 @@ function payerName(userId) {
 function getBudgetAmount(month, envelope) {
   var rows = readAllCached(SHEETS.BUDGETS.name);
   for (var i = 0; i < rows.length; i++) {
-    if (String(rows[i].month).trim() === month &&
+    if (toMonthStr(rows[i].month) === month &&
         String(rows[i].envelope).trim() === String(envelope).trim()) {
       return Number(rows[i].amount) || 0;
     }

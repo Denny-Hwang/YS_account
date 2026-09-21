@@ -570,6 +570,18 @@ OCR 언어는 Config 에 `ocr_language` 키를 넣어 바꿀 수 있다(기본 `
 - 오늘 탭의 날짜·유형·세부예산 칸이 기본으로 펼쳐져 있다. 접으면 기억한다.
 - 기록 직후 회신에 "되돌리기" 가 있다. 앱으로 돌아오면 2분 넘게 지난 숫자는 저절로 다시 읽고, 상단에 "hh:mm 기준" 이 보인다.
 
+### e. 봇이 예산을 0 으로 읽는 문제 (2026-09-21)
+증상: 앱은 예산 $1,000 을 보여 주는데 봇 아침 요약은 `잔액 -$954.71 · 계획 대비 -$954.71` 처럼 예산이 0 인 것으로 온다.
+원인: `Budgets` 탭에 손으로 `2026-09` 를 치면 구글 시트가 **날짜**(2026-09-01)로 바꿔 저장한다.
+앱은 Sheets API 가 주는 표시 문자열 `2026-09` 를 받아 멀쩡하고, Apps Script 는 Date 객체를 받아 `"2026-09"` 와 비교가 실패했다.
+고침: Apps Script 가 `Budgets.month` 를 읽는 모든 곳이 `toMonthStr` 로 Date 와 문자열을 같은 `YYYY-MM` 으로 맞춘다. `Monthly_View` 수식도 `TEXT(month,"yyyy-mm")` 로 비교한다.
+반영 절차:
+1. `clasp push -f`
+2. `배포 → 배포 관리 → 연필 → 새 버전 → 배포`. 봇 회신(웹훅)은 배포된 버전으로 돌기 때문에 이게 없으면 회신은 계속 0 으로 온다. 아침 요약·주간 결산 트리거는 push 만으로 최신 코드를 쓴다.
+3. (권장) `Setup.gs` 의 `normalizeBudgetMonths` 를 한 번 실행한다. 날짜로 저장된 셀을 문자열로 되돌리고 `month` 열을 일반 텍스트 서식으로 바꿔 앞으로 손으로 쳐도 날짜가 되지 않게 한다.
+4. (선택) `Views.gs` 의 `buildMonthlyView` 를 실행해 시트의 Monthly_View 수식을 새 기준으로 다시 그린다.
+확인: `Jobs.gs` 의 `dailySummary` 를 실행하면 요약이 바로 오고, 잔액이 예산 기준으로 나오면 된다.
+
 ---
 
 ## 부록 — 편집기에서 실행하는 함수와 파일
@@ -583,6 +595,7 @@ Apps Script 편집기 왼쪽 파일 목록에서 파일을 고른 뒤, 상단 �
 |---|---|---|
 | `runSetupAll` | `Setup.gs` | 탭 생성 + 시드 + Monthly_View·Dashboard 그리기. 최초 1회 |
 | `setupSheet` | `Setup.gs` | 탭과 헤더만 맞춘다. 새 열이 생겼을 때 실행 |
+| `normalizeBudgetMonths` | `Setup.gs` | `Budgets.month` 의 날짜 셀을 `YYYY-MM` 문자열로 되돌리고 열을 텍스트 서식으로 |
 | `applyPersonalDefaults` | `PersonalSeed.gs` | 우리 집 세부예산·고정 항목·부채를 시트에 반영 |
 | `checkPaydays` | `PersonalSeed.gs` | 2주급 급여일을 1년치 로그로 확인. 시트를 건드리지 않는다 |
 | `setEnvelopes` | `Setup.gs` | 세부예산 목록 변경 |

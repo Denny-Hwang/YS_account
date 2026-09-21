@@ -245,6 +245,40 @@ test('세부예산 초과는 빨강 + "예비비에서 옮기기" 버튼, 이동
   assert.equal(ctx.getBudgetAmount('2026-09', '예비비'), 60);
 });
 
+test('Budgets.month 가 날짜(Date)로 저장돼 있어도 예산을 읽고, 달을 다시 열지 않는다', () => {
+  const ctx = fresh();
+  // 시트에 손으로 "2026-09" 를 치면 구글 시트가 날짜로 바꿔 저장한다. 그 상태를 흉내 낸다.
+  const budgets = ctx.sheets.Budgets;
+  const monthCol = budgets.rows[0].indexOf('month');
+  let converted = 0;
+  budgets.rows.slice(1).forEach((row) => {
+    if (row[monthCol] === '2026-09') { row[monthCol] = new Date('2026-09-01T07:00:00Z'); converted++; }
+  });
+  assert.ok(converted >= 3);
+  ctx.invalidateReadCache();
+  ctx.cache.clear();
+
+  assert.equal(ctx.toMonthStr(new Date('2026-09-01T07:00:00Z')), '2026-09');
+  assert.equal(ctx.toMonthStr('2026-09'), '2026-09');
+  assert.equal(ctx.toMonthStr('2026-9'), '2026-09');
+  assert.equal(ctx.getBudgetAmount('2026-09', '식료품'), 1000);
+  assert.equal(ctx.getBudgetAmount('2026-09', '예비비'), 100);
+
+  // 예산이 있다고 인식해야 한다. 못 알아보면 매일 0 짜리 행을 또 만든다.
+  const before = rowsOf(ctx, 'Budgets').length;
+  ctx.ensureMonthOpened('2026-09');
+  assert.equal(rowsOf(ctx, 'Budgets').length, before);
+
+  // 아침 요약도 예산 1000 기준으로 계산한다(예산 0 이면 잔액이 음수로 나온다).
+  msg(ctx, '코스트코 85.89');
+  assert.match(lastText(ctx), /잔액 \$914\.11/);
+
+  // 뒷정리 함수는 Date 를 문자열로 되돌린다.
+  assert.equal(ctx.normalizeBudgetMonths(), converted);
+  rowsOf(ctx, 'Budgets').forEach((r) => assert.equal(typeof r.month, 'string'));
+  assert.equal(ctx.getBudgetAmount('2026-09', '식료품'), 1000);
+});
+
 test('부채와 연결된 고정비를 확정하면 원금과 회차가 줄어든다', () => {
   const ctx = fresh();
   ctx.upsertRowById('Debts', { id: 'D02', name: '신용대출', principal: 5000, rate_pct: 12, monthly_payment: 500, remaining_count: 10, currency: 'USD', notes: '', recurring_id: 'R07' });

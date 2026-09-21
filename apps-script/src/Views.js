@@ -171,10 +171,12 @@ function buildMonthlyView() {
       colRange(TX, 'status') + '="active")+(' + colRange(TX, 'status') + '="confirmed")+(' +
       colRange(TX, 'status') + '="committed"))*' +
       amountUsd + ')';
+    // Budgets.month 가 날짜로 저장돼 있어도 맞게 하려고 TEXT 로 'yyyy-mm' 을 만들어 비교한다.
+    // 문자열 셀은 TEXT 가 그대로 돌려주므로 둘 다 된다.
+    var budMonth = '(TEXT(' + colRange(BUD, 'month') + ',"yyyy-mm")=' + M + ')';
     envFormulas.push([
-      '=IFERROR(INDEX(FILTER(' + colRange(BUD, 'envelope') + ',' +
-        colRange(BUD, 'month') + '=' + M + '),' + (e + 1) + '),"")',
-      '=IF($A' + erow + '="","",SUMPRODUCT((' + colRange(BUD, 'month') + '=' + M + ')*(' +
+      '=IFERROR(INDEX(FILTER(' + colRange(BUD, 'envelope') + ',' + budMonth + '),' + (e + 1) + '),"")',
+      '=IF($A' + erow + '="","",SUMPRODUCT(' + budMonth + '*(' +
         colRange(BUD, 'envelope') + '=$A' + erow + ')*' + colRange(BUD, 'amount') + '))',
       '=IF($A' + erow + '="","",' + spent + ')',
       '=IF($A' + erow + '="","",$B' + erow + '-$C' + erow + ')',
