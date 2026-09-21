@@ -243,7 +243,7 @@ function seedBudgets(month) {
   var rows = readAll(SHEETS.BUDGETS.name);
   var existing = {};
   rows.forEach(function (r) {
-    if (String(r.month).trim() === yyyyMm) {
+    if (toMonthStr(r.month) === yyyyMm) {
       existing[String(r.envelope).trim()] = true;
     }
   });
@@ -293,7 +293,7 @@ function applyBudgetAmounts(month, amounts) {
     var carryover = spec && typeof spec === 'object' && spec.carryover ? String(spec.carryover) : '';
     var hit = null;
     rows.forEach(function (r) {
-      if (String(r.month).trim() === yyyyMm && String(r.envelope).trim() === envelope) {
+      if (toMonthStr(r.month) === yyyyMm && String(r.envelope).trim() === envelope) {
         hit = r;
       }
     });
@@ -311,6 +311,48 @@ function applyBudgetAmounts(month, amounts) {
   });
   invalidateReadCache(SHEETS.BUDGETS.name);
   return touched;
+}
+
+/**
+ * Budgets.month 에 날짜로 저장된 셀을 'YYYY-MM' 문자열로 되돌리고, 그 열을 일반 텍스트 서식으로 바꾼다.
+ * 시트에 손으로 "2026-09" 를 치면 구글 시트가 날짜로 바꿔 저장해 봇이 예산을 0 으로 읽던 문제의 뒷정리다.
+ * 코드는 이제 Date 도 읽지만, 서식을 텍스트로 두면 앞으로 쳐 넣는 값이 또 날짜가 되지 않는다.
+ * @return {number} 고친 셀 수
+ */
+function normalizeBudgetMonths() {
+  var sheet = getSheet(SHEETS.BUDGETS.name);
+  var headers = readHeaders(SHEETS.BUDGETS.name);
+  var col = headers.indexOf('month') + 1;
+  if (col <= 0) {
+    throw new Error('Budgets 탭에 month 열이 없습니다.');
+  }
+  var lastRow = sheet.getLastRow();
+  var fixed = 0;
+  if (lastRow >= 2) {
+    var range = sheet.getRange(2, col, lastRow - 1, 1);
+    var values = range.getValues();
+    var out = values.map(function (r) {
+      var v = r[0];
+      if (v === '' || v === null || v === undefined) {
+        return [''];
+      }
+      var normalized = toMonthStr(v);
+      if (isDateValue(v) || String(v) !== normalized) {
+        fixed++;
+      }
+      return [normalized];
+    });
+    range.setNumberFormat('@');
+    range.setValues(out);
+  }
+  // 아직 비어 있는 아래 행도 텍스트 서식으로 두어 앞으로 손으로 쳐도 날짜가 되지 않게 한다.
+  var maxRows = sheet.getMaxRows();
+  if (maxRows >= 2) {
+    sheet.getRange(2, col, maxRows - 1, 1).setNumberFormat('@');
+  }
+  invalidateReadCache(SHEETS.BUDGETS.name);
+  Logger.log('Budgets.month 정규화: ' + fixed + '개 셀');
+  return fixed;
 }
 
 /** 전체 초기화. 두 번 실행해도 결과가 같다(멱등). */

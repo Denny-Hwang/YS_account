@@ -78,7 +78,7 @@ function ensureMonthOpened(yyyyMm) {
     return false;
   }
   var hasBudget = readAllCached(SHEETS.BUDGETS.name).some(function (row) {
-    return String(row.month).trim() === month;
+    return toMonthStr(row.month) === month;
   });
   var opened = false;
   if (!hasBudget) {
@@ -283,9 +283,10 @@ function openMonthBudgets(month) {
   var previous = [];
   budgets.forEach(function (row) {
     var envelope = String(row.envelope).trim();
-    if (String(row.month).trim() === month) {
+    var rowMonth = toMonthStr(row.month);
+    if (rowMonth === month) {
       existing[envelope] = true;
-    } else if (String(row.month).trim() === prevMonth) {
+    } else if (rowMonth === prevMonth) {
       previous.push(row);
     }
   });

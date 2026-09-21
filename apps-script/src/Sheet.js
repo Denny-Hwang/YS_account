@@ -227,9 +227,30 @@ function currentMonthStr() {
   return todayStr().slice(0, 7);
 }
 
+/**
+ * 값이 Date 든 문자열이든 YYYY-MM 으로 정규화한다.
+ * 시트에 손으로 "2026-09" 를 치면 구글 시트가 날짜(2026-09-01)로 바꿔 저장하므로
+ * getValues() 는 Date 를 돌려준다. String(Date) 는 "2026-09" 와 절대 같지 않아 예산이 0 으로 읽혔다.
+ * Budgets.month 를 비교하는 곳은 전부 이 함수를 거친다.
+ */
+/** Date 인지 본다. instanceof 는 다른 실행 컨텍스트에서 만든 Date 를 놓치므로 모양으로 판별한다. */
+function isDateValue(value) {
+  return Boolean(value) && typeof value === 'object' && typeof value.getTime === 'function';
+}
+
+function toMonthStr(value) {
+  if (isDateValue(value)) {
+    var tz = getConfig('timezone', 'America/Los_Angeles');
+    return Utilities.formatDate(value, tz, 'yyyy-MM');
+  }
+  var s = String(value === null || value === undefined ? '' : value).trim();
+  var m = s.match(/^(\d{4})-(\d{1,2})/);
+  return m ? m[1] + '-' + ('0' + m[2]).slice(-2) : s;
+}
+
 /** 값이 Date 든 문자열이든 YYYY-MM-DD 로 정규화한다. */
 function toDateStr(value) {
-  if (value instanceof Date) {
+  if (isDateValue(value)) {
     var tz = getConfig('timezone', 'America/Los_Angeles');
     return Utilities.formatDate(value, tz, 'yyyy-MM-dd');
   }

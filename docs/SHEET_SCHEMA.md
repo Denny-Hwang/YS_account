@@ -118,12 +118,15 @@
 
 | 열 | 설명 |
 |---|---|
-| month | YYYY-MM |
+| month | YYYY-MM. **문자열**이어야 한다. 손으로 `2026-09` 를 치면 시트가 날짜로 바꾸므로 열 서식을 일반 텍스트로 둔다(`normalizeBudgetMonths`) |
 | envelope | 세부예산 이름 |
 | amount | 그 달 예산(USD) |
 | carryover | `reset` \| `carry` (월말 잔액 처리) |
 
 헤더 순서: `month, envelope, amount, carryover`
+
+`month` 가 날짜로 저장돼 있어도 Apps Script(`Sheet.js` 의 `toMonthStr`)와 `Monthly_View` 수식(`TEXT(month,"yyyy-mm")`)은
+같은 달로 읽는다. 웹앱은 Sheets API 의 표시 문자열을 받으므로 원래부터 영향이 없었다.
 
 월 시작 규칙(`LedgerRules.nextMonthBudgets`):
 - `carry` 세부예산은 전월 **양수** 잔액을 더한다. 음수는 더하지 않는다. 연간비 같은 싱킹 펀드는 `carry` 로 둔다.
