@@ -12,8 +12,10 @@
   P14.3 (2026-09-21): 봇이 예산을 0 으로 읽던 버그 수정. `Budgets.month` 를 손으로 치면 시트가 날짜로 저장하는데
   Apps Script 가 `"2026-09"` 문자열과만 비교했다. `toMonthStr` 로 Date·문자열을 통일하고 `Monthly_View` 수식도 맞췄다.
   뒷정리 `normalizeBudgetMonths` 추가. 검증: `apps-script` 테스트 109개.
-  P14.4 (2026-10-01): P14.3 뒤에도 9월 마감 보고가 예산 $0 으로 온 버그 수정. 날짜 셀을 Config.timezone(LA)으로 풀어
-  스프레드시트 시간대가 동쪽이면 9월 1일이 8월 31일로 읽혔다. 셀 Date 는 스프레드시트 시간대로 풀고(`sheetTimeZone`),
+  P14.4 (2026-10-01): P14.3 뒤에도 9월 마감 보고가 예산 $0 으로 왔다. 실제 원인은 `.clasp.json` 의 `scriptId` 가
+  봇 프로젝트가 아니어서 P14.3 이 봇에 올라간 적이 없던 것(`diagnoseBudgets` 로 확인, 시트 시간대는 LA).
+  함께 잠재 버그도 고쳤다. 날짜 셀을 Config.timezone 으로 풀면 스프레드시트 시간대가 동쪽일 때 9월 1일이 8월 31일로 읽힌다.
+  셀 Date 는 스프레드시트 시간대로 풀고(`sheetTimeZone`),
   월 열기가 날짜 셀을 저절로 문자열로 고치며(`healBudgetMonths`), 전월 중복 행은 위의 것만 이어받는다.
   진단 `Setup.gs` 의 `diagnoseBudgets` 추가. 검증: `apps-script` 테스트 112개(새 시간대 테스트는 고치기 전 코드에서 실패 확인).
   검증: `apps-script` 테스트 108개, `webapp` 테스트 8개, 타입 검사·빌드 통과.
@@ -36,9 +38,10 @@
 시트·봇·트리거·웹앱이 모두 붙었고 P12 까지 반영됐다. 밀린 5건은 `webhookWatchdog` 이 회수했다.
 
 ## 다음 할 일
--1. **P14.3·P14.4 반영(봇 예산 0 버그).** `clasp push -f` → **새 버전 배포**(웹훅 회신은 배포 버전으로 돈다) →
-   `Setup.gs` 의 `diagnoseBudgets` 로 시간대와 봇이 읽는 금액 확인 → 10월 예산이 0 이면 앱 예산 탭에서 넣기 →
-   `Jobs.gs` 의 `dailySummary` 로 요약이 예산 기준으로 오는지 확인. 절차는 SETUP.md P14-f.
+-1. **P14.3·P14.4 마무리(봇 예산 0 버그).** 2026-10-01 에 `scriptId` 를 바로잡아 봇 프로젝트로 push 했다.
+   남은 것: `Setup.gs` 의 `normalizeBudgetMonths`(Budgets 36행 전부 날짜 셀) → **새 버전 배포**(웹훅 회신은 배포 버전으로 돈다) →
+   앱 예산 탭에서 10월 금액 넣기(9월을 못 읽은 채 0 으로 열렸다) → `Jobs.gs` 의 `dailySummary` 로 확인.
+   Budgets 의 0 짜리 중복 행(못 읽던 동안 쌓임)은 위의 행만 쓰므로 무해하다. 절차는 SETUP.md P14-f.
 0. **P14 반영.** `clasp push` → `Setup.gs` 의 `setupSheet`(`Assets` 에 `kind` 열, Config 에 `categories` 키).
    웹앱 더보기 › 자산 › 새 스냅샷에서 401k·IRP·HSA·국민연금 잔액을 종류별로 넣는다(값은 저장소에 두지 않는다).
    로그인 유지가 실기기에서 어떻게 느껴지는지 본다: 1시간 안 재실행은 무음, 그 뒤엔 창이 잠깐 떴다 닫혀야 한다.
