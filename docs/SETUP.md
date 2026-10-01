@@ -576,7 +576,7 @@ OCR 언어는 Config 에 `ocr_language` 키를 넣어 바꿀 수 있다(기본 `
 앱은 Sheets API 가 주는 표시 문자열 `2026-09` 를 받아 멀쩡하고, Apps Script 는 Date 객체를 받아 `"2026-09"` 와 비교가 실패했다.
 고침: Apps Script 가 `Budgets.month` 를 읽는 모든 곳이 `toMonthStr` 로 Date 와 문자열을 같은 `YYYY-MM` 으로 맞춘다. `Monthly_View` 수식도 `TEXT(month,"yyyy-mm")` 로 비교한다.
 반영 절차:
-1. `clasp push -f`
+1. `git pull origin main` → `cd apps-script` → `clasp push -f`. `.clasp.json` 은 `apps-script/` 에만 있으므로 저장소 맨 위에서 치면 `Project settings not found.` 가 난다.
 2. `배포 → 배포 관리 → 연필 → 새 버전 → 배포`. 봇 회신(웹훅)은 배포된 버전으로 돌기 때문에 이게 없으면 회신은 계속 0 으로 온다. 아침 요약·주간 결산 트리거는 push 만으로 최신 코드를 쓴다.
 3. (권장) `Setup.gs` 의 `normalizeBudgetMonths` 를 한 번 실행한다. 날짜로 저장된 셀을 문자열로 되돌리고 `month` 열을 일반 텍스트 서식으로 바꿔 앞으로 손으로 쳐도 날짜가 되지 않게 한다.
 4. (선택) `Views.gs` 의 `buildMonthlyView` 를 실행해 시트의 Monthly_View 수식을 새 기준으로 다시 그린다.
@@ -592,7 +592,14 @@ OCR 언어는 Config 에 `ocr_language` 키를 넣어 바꿀 수 있다(기본 `
 - 월 열기(`ensureMonthOpened`, `monthlyOpen`)가 `Budgets.month` 에 날짜 셀이 있으면 `normalizeBudgetMonths` 를 저절로 부른다. 손으로 실행하지 않아도 된다.
 - 전월 예산 행이 같은 세부예산에 여럿이면(예산을 못 알아보던 동안 0 짜리 행이 쌓였다) 위의 것 하나만 이어받는다. 초과분을 여러 번 빼지 않는다.
 반영 절차:
-1. `clasp push -f`
+1. 코드를 받고 `apps-script` 폴더에서 올린다. 저장소 맨 위에서 치면 `Project settings not found.` 가 난다.
+   ```
+   git pull origin main
+   cd apps-script
+   clasp push -f
+   ```
+   `apps-script` 안에서도 같은 오류면 `.clasp.json` 이 없는 것이다. `.clasp.json.example` 을 복사해 `scriptId` 를
+   편집기 › 프로젝트 설정 › 스크립트 ID 로 채운다(커밋되지 않는다).
 2. `배포 → 배포 관리 → 연필 → 새 버전 → 배포` (봇 회신용).
 3. `Setup.gs` 의 `diagnoseBudgets` 를 실행해 로그를 본다. 스프레드시트 시간대, 날짜로 남은 셀 수, 이번 달 세부예산별로 봇이 읽는 금액이 찍힌다.
    `행 없음` 이 보이면 앱 예산 탭에서 그 달 금액을 넣는다. `같은 달 행 N개` 는 위의 행만 쓰므로 그대로 둬도 되고, 아래 0 짜리 행은 지워도 된다.
