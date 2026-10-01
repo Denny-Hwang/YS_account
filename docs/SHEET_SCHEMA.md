@@ -118,7 +118,7 @@
 
 | 열 | 설명 |
 |---|---|
-| month | YYYY-MM. **문자열**이어야 한다. 손으로 `2026-09` 를 치면 시트가 날짜로 바꾸므로 열 서식을 일반 텍스트로 둔다(`normalizeBudgetMonths`) |
+| month | YYYY-MM. **문자열**이어야 한다. 손으로 `2026-09` 를 치면 시트가 날짜로 바꾸므로 열 서식을 일반 텍스트로 둔다(`normalizeBudgetMonths`, 월 열기 때 저절로). 날짜로 남은 셀은 스프레드시트 시간대로 풀어 읽는다 |
 | envelope | 세부예산 이름 |
 | amount | 그 달 예산(USD) |
 | carryover | `reset` \| `carry` (월말 잔액 처리) |

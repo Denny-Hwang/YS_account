@@ -58,7 +58,8 @@ function buildContext(options) {
   const ss = {
     getSheetByName: (n) => sheets[n] || null,
     insertSheet: (n) => (sheets[n] = new Sheet(n)),
-    getSheets: () => Object.values(sheets)
+    getSheets: () => Object.values(sheets),
+    getSpreadsheetTimeZone: () => (options && options.sheetTz) || 'America/Los_Angeles'
   };
   let uuid = 0;
   const ctx = {
@@ -132,8 +133,8 @@ const lastText = (ctx) => ctx.sent.filter((s) => s.method === 'sendMessage' || s
 const lastMarkup = (ctx) => ctx.sent.filter((s) => s.method === 'sendMessage' || s.method === 'editMessageText').slice(-1)[0].payload.reply_markup;
 const rowsOf = (ctx, name) => ctx.readAll(name);
 
-function fresh() {
-  const ctx = buildContext({ now: '2026-09-13T20:00:00Z' });
+function fresh(extra) {
+  const ctx = buildContext({ now: '2026-09-13T20:00:00Z', ...extra });
   ctx.setupSheet(); ctx.seedRecurring(); ctx.seedMerchants();
   ctx.setConfig('allowed_telegram_ids', '11,22');
   ctx.setConfig('name_11', '아빠');
@@ -273,10 +274,87 @@ test('Budgets.month 가 날짜(Date)로 저장돼 있어도 예산을 읽고, �
   msg(ctx, '코스트코 85.89');
   assert.match(lastText(ctx), /잔액 \$914\.11/);
 
-  // 뒷정리 함수는 Date 를 문자열로 되돌린다.
-  assert.equal(ctx.normalizeBudgetMonths(), converted);
+  // 월 열기 확인(ensureMonthOpened)이 날짜 셀을 문자열로 되돌려 둔다. 뒷정리 함수는 더 고칠 것이 없다.
   rowsOf(ctx, 'Budgets').forEach((r) => assert.equal(typeof r.month, 'string'));
+  assert.equal(ctx.normalizeBudgetMonths(), 0);
   assert.equal(ctx.getBudgetAmount('2026-09', '식료품'), 1000);
+});
+
+/** 시간대별 YYYY-MM-01 자정. 날짜 셀에서 getValues() 가 돌려주는 Date 가 이것이다. */
+const SHEET_MIDNIGHT = {
+  'Asia/Seoul': { '2026-08': '2026-07-31T15:00:00Z', '2026-09': '2026-08-31T15:00:00Z' },
+  'America/New_York': { '2026-08': '2026-08-01T04:00:00Z', '2026-09': '2026-09-01T04:00:00Z' }
+};
+
+/** Budgets.month 의 'YYYY-MM' 문자열을 그 시간대 자정 Date 로 바꿔 시트가 날짜로 저장한 상태를 흉내 낸다. */
+function datifyBudgetMonths(ctx, midnights) {
+  const budgets = ctx.sheets.Budgets;
+  const monthCol = budgets.rows[0].indexOf('month');
+  let converted = 0;
+  budgets.rows.slice(1).forEach((row) => {
+    const at = midnights[row[monthCol]];
+    if (at) { row[monthCol] = new Date(at); converted++; }
+  });
+  ctx.invalidateReadCache();
+  ctx.cache.clear();
+  return converted;
+}
+
+for (const sheetTz of Object.keys(SHEET_MIDNIGHT)) {
+  test(`스프레드시트 시간대가 ${sheetTz} 여도 날짜로 저장된 예산 달을 하루 당겨 읽지 않는다`, () => {
+    const ctx = fresh({ sheetTz });
+    assert.ok(datifyBudgetMonths(ctx, SHEET_MIDNIGHT[sheetTz]) >= 6);
+
+    // Config.timezone(LA)으로 풀면 8월 31일이 된다. 스프레드시트 시간대로 풀어야 9월 1일이다.
+    assert.equal(ctx.toMonthStr(new Date(SHEET_MIDNIGHT[sheetTz]['2026-09'])), '2026-09');
+    assert.equal(ctx.toDateStr(new Date(SHEET_MIDNIGHT[sheetTz]['2026-09'])), '2026-09-01');
+    assert.equal(ctx.getBudgetAmount('2026-09', '식료품'), 1000);
+    assert.equal(ctx.getBudgetAmount('2026-08', '생필품'), 100);
+
+    // 달을 다시 열지 않고(0 짜리 행을 또 만들지 않고), 날짜 셀은 저절로 문자열로 돌아간다.
+    const before = rowsOf(ctx, 'Budgets').length;
+    ctx.ensureMonthOpened('2026-09');
+    const after = rowsOf(ctx, 'Budgets');
+    assert.equal(after.length, before);
+    after.forEach((r) => assert.equal(typeof r.month, 'string'));
+    assert.deepEqual([...new Set(after.map((r) => r.month))].sort(), ['2026-08', '2026-09']);
+
+    msg(ctx, '코스트코 85.89');
+    assert.match(lastText(ctx), /잔액 \$914\.11/);
+  });
+}
+
+test('월 열기: 날짜로 저장된 전월 예산과 0 짜리 중복 행이 있어도 세부예산마다 한 번만 이어받는다', () => {
+  const ctx = buildContext({ now: '2026-10-01T14:00:00Z', sheetTz: 'Asia/Seoul' });
+  ctx.setupSheet(); ctx.seedRecurring(); ctx.seedMerchants();
+  ctx.setConfig('allowed_telegram_ids', '11');
+  ctx.applyBudgetAmounts('2026-09', { '식료품': 1000, '생필품': 200, '예비비': { amount: 100, carryover: 'carry' } });
+  // 예산을 못 알아보던 동안 월 열기가 되풀이되며 쌓인 0 짜리 행.
+  for (let i = 0; i < 2; i++) {
+    ['식료품', '생필품', '예비비'].forEach((envelope) => {
+      ctx.appendRow('Budgets', { month: '2026-09', envelope, amount: 0, carryover: envelope === '예비비' ? 'carry' : 'reset' });
+    });
+  }
+  ctx.appendRow('Transactions', {
+    id: 'tx_sep', date: '2026-09-20', type: 'expense', kind: 'variable', envelope: '식료품', merchant: '코스트코',
+    amount: 1390.68, currency: 'USD', amount_usd: 1390.68, status: 'active'
+  });
+  assert.equal(datifyBudgetMonths(ctx, SHEET_MIDNIGHT['Asia/Seoul']), 9);
+
+  const diag = ctx.diagnoseBudgets('2026-09');
+  assert.match(diag, /스프레드시트 시간대: Asia\/Seoul/);
+  assert.match(diag, /날짜로 저장된 month 셀 9개/);
+  assert.match(diag, /2026-09 식료품: \$1,000\.00 \(같은 달 행 3개/);
+
+  const text = ctx.monthlyOpen();
+  const october = rowsOf(ctx, 'Budgets').filter((r) => r.month === '2026-10');
+  assert.equal(october.length, 3, '세부예산마다 한 행');
+  assert.equal(ctx.getBudgetAmount('2026-10', '식료품'), 1000);
+  assert.equal(ctx.getBudgetAmount('2026-10', '생필품'), 200);
+  // 예비비: 100 + 이월 100 - 식료품 초과 390.68 을 한 번만 뺀다.
+  assert.equal(ctx.getBudgetAmount('2026-10', '예비비'), -190.68);
+  assert.match(text, /식료품 .*예산 \$1,000\.00/);
+  rowsOf(ctx, 'Budgets').forEach((r) => assert.equal(typeof r.month, 'string'));
 });
 
 test('부채와 연결된 고정비를 확정하면 원금과 회차가 줄어든다', () => {

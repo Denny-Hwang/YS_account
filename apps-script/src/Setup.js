@@ -355,6 +355,46 @@ function normalizeBudgetMonths() {
   return fixed;
 }
 
+/**
+ * Budgets.month 에 날짜 셀이 하나라도 있을 때만 normalizeBudgetMonths 를 부른다. 없으면 아무것도 쓰지 않는다.
+ * 월 열기(ensureMonthOpened, monthlyOpen)가 부르므로 사람이 따로 실행하지 않아도 저절로 정리된다.
+ * @return {number} 고친 셀 수
+ */
+function healBudgetMonths() {
+  var hasDate = readAllCached(SHEETS.BUDGETS.name).some(function (row) {
+    return isDateValue(row.month);
+  });
+  return hasDate ? normalizeBudgetMonths() : 0;
+}
+
+/**
+ * 봇이 그 달 예산을 어떻게 읽는지 로그로 보여 준다. 시트는 바꾸지 않는다.
+ * 앱과 봇의 예산 숫자가 다를 때 먼저 실행한다.
+ * @param {string=} month YYYY-MM. 생략하면 이번 달.
+ * @return {string}
+ */
+function diagnoseBudgets(month) {
+  var yyyyMm = typeof month === 'string' && month ? month : currentMonthStr();
+  var rows = readAll(SHEETS.BUDGETS.name);
+  var dateCells = rows.filter(function (r) { return isDateValue(r.month); }).length;
+  var lines = [
+    '스프레드시트 시간대: ' + sheetTimeZone() + ' · Config.timezone: ' + getConfig('timezone', 'America/Los_Angeles'),
+    'Budgets ' + rows.length + '행 · 날짜로 저장된 month 셀 ' + dateCells + '개' +
+      (dateCells ? ' (다음 월 열기 때 저절로 고쳐진다. 바로 고치려면 normalizeBudgetMonths)' : '')
+  ];
+  getConfigList('envelopes').forEach(function (envelope) {
+    var hits = rows.filter(function (r) {
+      return toMonthStr(r.month) === yyyyMm && String(r.envelope).trim() === envelope;
+    });
+    lines.push(yyyyMm + ' ' + envelope + ': ' + (hits.length
+      ? formatUsd(Number(hits[0].amount) || 0) + (hits.length > 1 ? ' (같은 달 행 ' + hits.length + '개, 위의 것을 쓴다)' : '')
+      : '행 없음 → 0 으로 읽힌다'));
+  });
+  var text = lines.join('\n');
+  Logger.log(text);
+  return text;
+}
+
 /** 전체 초기화. 두 번 실행해도 결과가 같다(멱등). */
 function runSetupAll() {
   var result = [];

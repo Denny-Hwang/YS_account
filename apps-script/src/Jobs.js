@@ -77,6 +77,7 @@ function ensureMonthOpened(yyyyMm) {
   if (cache.get(flag)) {
     return false;
   }
+  healBudgetMonths();
   var hasBudget = readAllCached(SHEETS.BUDGETS.name).some(function (row) {
     return toMonthStr(row.month) === month;
   });
@@ -245,6 +246,7 @@ function weeklyDigest() {
  */
 function monthlyOpen() {
   var month = currentMonthStr();
+  healBudgetMonths();
   var opened = openMonthBudgets(month);
   var seeded = seedBudgets(month);
   invalidateReadCache(SHEETS.BUDGETS.name);
@@ -281,12 +283,16 @@ function openMonthBudgets(month) {
 
   var existing = {};
   var previous = [];
+  var previousSeen = {};
   budgets.forEach(function (row) {
     var envelope = String(row.envelope).trim();
     var rowMonth = toMonthStr(row.month);
     if (rowMonth === month) {
       existing[envelope] = true;
-    } else if (rowMonth === prevMonth) {
+    } else if (rowMonth === prevMonth && !previousSeen[envelope]) {
+      // 같은 달·세부예산 행이 여럿이면 getBudgetAmount 처럼 위의 것만 쓴다.
+      // 중복을 다 넘기면 초과분을 여러 번 빼고 행도 그만큼 늘어난다.
+      previousSeen[envelope] = true;
       previous.push(row);
     }
   });

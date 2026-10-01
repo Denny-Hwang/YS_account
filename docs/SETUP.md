@@ -582,6 +582,23 @@ OCR 언어는 Config 에 `ocr_language` 키를 넣어 바꿀 수 있다(기본 `
 4. (선택) `Views.gs` 의 `buildMonthlyView` 를 실행해 시트의 Monthly_View 수식을 새 기준으로 다시 그린다.
 확인: `Jobs.gs` 의 `dailySummary` 를 실행하면 요약이 바로 오고, 잔액이 예산 기준으로 나오면 된다.
 
+### f. 그래도 봇이 예산을 0 으로 읽는 문제 (2026-10-01)
+증상: e 를 반영한 뒤에도 9월 마감 보고가 `식료품 예산 $0.00 · 실행 $1,390.68` 처럼 온다. 앱은 여전히 맞다.
+원인: e 의 `toMonthStr` 가 날짜 셀을 **Config.timezone(LA)** 으로 풀었다. 그런데 `getValues()` 가 주는 Date 는
+**스프레드시트 시간대**(파일 › 설정 › 시간대)의 그날 자정이다. 스프레드시트 시간대가 LA 보다 동쪽(서울·뉴욕 등)이면
+`2026-09-01 00:00` 이 LA 로는 `2026-08-31` 이라 9월 예산이 8월로 읽혔다. 그래서 9월은 0, "지난달" 은 9월 예산으로 채점됐다.
+고침:
+- 셀에서 읽은 Date 는 스프레드시트 시간대로 푼다(`Sheet.gs` 의 `sheetTimeZone`). `Transactions.date` 도 같은 규칙이다.
+- 월 열기(`ensureMonthOpened`, `monthlyOpen`)가 `Budgets.month` 에 날짜 셀이 있으면 `normalizeBudgetMonths` 를 저절로 부른다. 손으로 실행하지 않아도 된다.
+- 전월 예산 행이 같은 세부예산에 여럿이면(예산을 못 알아보던 동안 0 짜리 행이 쌓였다) 위의 것 하나만 이어받는다. 초과분을 여러 번 빼지 않는다.
+반영 절차:
+1. `clasp push -f`
+2. `배포 → 배포 관리 → 연필 → 새 버전 → 배포` (봇 회신용).
+3. `Setup.gs` 의 `diagnoseBudgets` 를 실행해 로그를 본다. 스프레드시트 시간대, 날짜로 남은 셀 수, 이번 달 세부예산별로 봇이 읽는 금액이 찍힌다.
+   `행 없음` 이 보이면 앱 예산 탭에서 그 달 금액을 넣는다. `같은 달 행 N개` 는 위의 행만 쓰므로 그대로 둬도 되고, 아래 0 짜리 행은 지워도 된다.
+4. 10월이 이미 열렸으면(1일 6시 `monthlyOpen`) 10월 예산은 9월을 못 읽은 채 0 으로 만들어졌다. 앱 예산 탭에서 10월 금액을 넣는다.
+확인: `Jobs.gs` 의 `dailySummary` 를 실행해 잔액이 예산 기준으로 나오면 된다.
+
 ---
 
 ## 부록 — 편집기에서 실행하는 함수와 파일
@@ -595,7 +612,8 @@ Apps Script 편집기 왼쪽 파일 목록에서 파일을 고른 뒤, 상단 �
 |---|---|---|
 | `runSetupAll` | `Setup.gs` | 탭 생성 + 시드 + Monthly_View·Dashboard 그리기. 최초 1회 |
 | `setupSheet` | `Setup.gs` | 탭과 헤더만 맞춘다. 새 열이 생겼을 때 실행 |
-| `normalizeBudgetMonths` | `Setup.gs` | `Budgets.month` 의 날짜 셀을 `YYYY-MM` 문자열로 되돌리고 열을 텍스트 서식으로 |
+| `normalizeBudgetMonths` | `Setup.gs` | `Budgets.month` 의 날짜 셀을 `YYYY-MM` 문자열로 되돌리고 열을 텍스트 서식으로. 월 열기 때 저절로도 돈다 |
+| `diagnoseBudgets` | `Setup.gs` | 앱과 봇의 예산이 다를 때. 시간대와 봇이 읽는 이번 달 세부예산별 금액을 로그로. 시트를 건드리지 않는다 |
 | `applyPersonalDefaults` | `PersonalSeed.gs` | 우리 집 세부예산·고정 항목·부채를 시트에 반영 |
 | `checkPaydays` | `PersonalSeed.gs` | 2주급 급여일을 1년치 로그로 확인. 시트를 건드리지 않는다 |
 | `setEnvelopes` | `Setup.gs` | 세부예산 목록 변경 |
