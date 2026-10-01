@@ -227,32 +227,52 @@ function currentMonthStr() {
   return todayStr().slice(0, 7);
 }
 
-/**
- * 값이 Date 든 문자열이든 YYYY-MM 으로 정규화한다.
- * 시트에 손으로 "2026-09" 를 치면 구글 시트가 날짜(2026-09-01)로 바꿔 저장하므로
- * getValues() 는 Date 를 돌려준다. String(Date) 는 "2026-09" 와 절대 같지 않아 예산이 0 으로 읽혔다.
- * Budgets.month 를 비교하는 곳은 전부 이 함수를 거친다.
- */
 /** Date 인지 본다. instanceof 는 다른 실행 컨텍스트에서 만든 Date 를 놓치므로 모양으로 판별한다. */
 function isDateValue(value) {
   return Boolean(value) && typeof value === 'object' && typeof value.getTime === 'function';
 }
 
+/** sheetTimeZone 의 실행 단위 캐시. */
+var SHEET_TZ_CACHE = '';
+
+/**
+ * 셀에서 읽은 Date 를 풀 시간대. 스프레드시트 자체 시간대(파일 › 설정)다.
+ * getValues() 의 Date 는 "스프레드시트 시간대의 그날 자정" 이다. 이것을 Config.timezone(LA)으로 풀면
+ * 스프레드시트 시간대가 LA 보다 동쪽(서울·뉴욕 등)일 때 2026-09-01 이 2026-08-31 로 하루 당겨진다.
+ * 오늘 날짜(todayStr)는 사람 기준이라 계속 Config.timezone 을 쓴다.
+ */
+function sheetTimeZone() {
+  if (!SHEET_TZ_CACHE) {
+    var tz = '';
+    try {
+      tz = getSpreadsheet().getSpreadsheetTimeZone();
+    } catch (err) {
+      tz = '';
+    }
+    SHEET_TZ_CACHE = tz || getConfig('timezone', 'America/Los_Angeles');
+  }
+  return SHEET_TZ_CACHE;
+}
+
+/**
+ * 값이 Date 든 문자열이든 YYYY-MM 으로 정규화한다.
+ * 시트에 "2026-09" 를 쓰면(손으로든 Apps Script 의 setValues 로든) 구글 시트가 날짜(2026-09-01)로 바꿔 저장하므로
+ * getValues() 는 Date 를 돌려준다. String(Date) 는 "2026-09" 와 절대 같지 않아 예산이 0 으로 읽혔다.
+ * Budgets.month 를 비교하는 곳은 전부 이 함수를 거친다.
+ */
 function toMonthStr(value) {
   if (isDateValue(value)) {
-    var tz = getConfig('timezone', 'America/Los_Angeles');
-    return Utilities.formatDate(value, tz, 'yyyy-MM');
+    return Utilities.formatDate(value, sheetTimeZone(), 'yyyy-MM');
   }
   var s = String(value === null || value === undefined ? '' : value).trim();
   var m = s.match(/^(\d{4})-(\d{1,2})/);
   return m ? m[1] + '-' + ('0' + m[2]).slice(-2) : s;
 }
 
-/** 값이 Date 든 문자열이든 YYYY-MM-DD 로 정규화한다. */
+/** 값이 Date 든 문자열이든 YYYY-MM-DD 로 정규화한다. Date 는 셀 값이므로 스프레드시트 시간대로 푼다. */
 function toDateStr(value) {
   if (isDateValue(value)) {
-    var tz = getConfig('timezone', 'America/Los_Angeles');
-    return Utilities.formatDate(value, tz, 'yyyy-MM-dd');
+    return Utilities.formatDate(value, sheetTimeZone(), 'yyyy-MM-dd');
   }
   var s = String(value || '').trim();
   var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
