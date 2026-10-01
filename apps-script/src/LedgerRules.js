@@ -295,6 +295,44 @@ function nextMonthBudgets(prevBudgets, statusByEnvelope, overspendEnvelope) {
 }
 
 /**
+ * Budgets 의 같은 달·세부예산 중복 행 가운데 지워도 되는 행을 고른다.
+ * 봇(getBudgetAmount)과 앱(budgetAmount)은 같은 달·세부예산의 맨 위 행만 읽는다.
+ * 그 아래 행 중 금액이 0 이거나 빈 것은 지워도 읽히는 값이 바뀌지 않는다.
+ * 아래 행에 0 이 아닌 값이 있으면 사람이 넣은 값일 수 있어 지우지 않고 keptNonZero 로 알린다.
+ * @param {!Array<{row: number, month: string, envelope: string, amount: *}>} rows
+ *   row 는 시트 행 번호, month 는 'YYYY-MM' 으로 맞춘 값
+ * @return {{remove: !Array<{row: number, month: string, envelope: string}>,
+ *   keptNonZero: !Array<{row: number, month: string, envelope: string, amount: *, firstRow: number}>}}
+ *   remove 는 행 번호가 큰 것부터. 아래에서부터 지워야 남은 행 번호가 밀리지 않는다.
+ */
+function budgetDuplicateRows(rows) {
+  var firstRow = {};
+  var remove = [];
+  var keptNonZero = [];
+  (rows || []).slice().sort(function (a, b) { return a.row - b.row; }).forEach(function (r) {
+    var month = String(r.month === null || r.month === undefined ? '' : r.month).trim();
+    var envelope = String(r.envelope === null || r.envelope === undefined ? '' : r.envelope).trim();
+    if (!month || !envelope) {
+      return;
+    }
+    var key = month + '|' + envelope;
+    if (!Object.prototype.hasOwnProperty.call(firstRow, key)) {
+      firstRow[key] = r.row;
+      return;
+    }
+    var raw = r.amount;
+    var isZero = raw === '' || raw === null || raw === undefined || Number(raw) === 0;
+    if (isZero) {
+      remove.push({ row: r.row, month: month, envelope: envelope });
+    } else {
+      keptNonZero.push({ row: r.row, month: month, envelope: envelope, amount: raw, firstRow: firstRow[key] });
+    }
+  });
+  remove.sort(function (a, b) { return b.row - a.row; });
+  return { remove: remove, keptNonZero: keptNonZero };
+}
+
+/**
  * 한 번 상환했을 때 부채가 어떻게 줄어드는지 계산한다(월 복리 단순 상각).
  * @param {number} principal 남은 원금
  * @param {number} ratePct 연이율 %
@@ -373,6 +411,7 @@ if (typeof module !== 'undefined') {
     matchRecurringName: matchRecurringName,
     undoPlan: undoPlan,
     nextMonthBudgets: nextMonthBudgets,
+    budgetDuplicateRows: budgetDuplicateRows,
     amortizeOnce: amortizeOnce,
     payoffMonths: payoffMonths,
     monthScore: monthScore

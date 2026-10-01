@@ -607,7 +607,10 @@ OCR 언어는 Config 에 `ocr_language` 키를 넣어 바꿀 수 있다(기본 `
    편집기 › 프로젝트 설정 › 스크립트 ID 로 채운다(커밋되지 않는다).
 2. `배포 → 배포 관리 → 연필 → 새 버전 → 배포` (봇 회신용).
 3. `Setup.gs` 의 `diagnoseBudgets` 를 실행해 로그를 본다. 스프레드시트 시간대, 날짜로 남은 셀 수, 이번 달 세부예산별로 봇이 읽는 금액이 찍힌다.
-   `행 없음` 이 보이면 앱 예산 탭에서 그 달 금액을 넣는다. `같은 달 행 N개` 는 위의 행만 쓰므로 그대로 둬도 되고, 아래 0 짜리 행은 지워도 된다.
+   `행 없음` 이 보이면 앱 예산 탭에서 그 달 금액을 넣는다. `같은 달 행 N개` 는 위의 행만 쓰므로 그대로 둬도 된다.
+   정리하려면 `Setup.gs` 의 `dedupeBudgetRows` 로 지울 행을 로그로 미리 보고, `dedupeBudgetRowsCommit` 으로 지운다.
+   같은 달·세부예산의 맨 위 행은 남기고 그 아래 0 원 행만 지우므로 봇·앱이 읽는 예산은 그대로다. 0 이 아닌 아래 행은 남기고 로그로 알린다.
+   지운 뒤 앱을 새로고침한다(열려 있던 앱은 지우기 전 행 번호를 들고 있다).
 4. 10월이 이미 열렸으면(1일 6시 `monthlyOpen`) 10월 예산은 9월을 못 읽은 채 0 으로 만들어졌다. 앱 예산 탭에서 10월 금액을 넣는다.
 확인: `Jobs.gs` 의 `dailySummary` 를 실행해 잔액이 예산 기준으로 나오면 된다.
 
@@ -626,6 +629,8 @@ Apps Script 편집기 왼쪽 파일 목록에서 파일을 고른 뒤, 상단 �
 | `setupSheet` | `Setup.gs` | 탭과 헤더만 맞춘다. 새 열이 생겼을 때 실행 |
 | `normalizeBudgetMonths` | `Setup.gs` | `Budgets.month` 의 날짜 셀을 `YYYY-MM` 문자열로 되돌리고 열을 텍스트 서식으로. 월 열기 때 저절로도 돈다 |
 | `diagnoseBudgets` | `Setup.gs` | 앱과 봇의 예산이 다를 때. 시간대와 봇이 읽는 이번 달 세부예산별 금액을 로그로. 시트를 건드리지 않는다 |
+| `dedupeBudgetRows` | `Setup.gs` | `Budgets` 의 같은 달·세부예산 0 원 중복 행을 로그로 미리 본다. 지우지 않는다 |
+| `dedupeBudgetRowsCommit` | `Setup.gs` | 위에서 고른 0 원 중복 행을 지운다. 맨 위 행은 남긴다 |
 | `applyPersonalDefaults` | `PersonalSeed.gs` | 우리 집 세부예산·고정 항목·부채를 시트에 반영 |
 | `checkPaydays` | `PersonalSeed.gs` | 2주급 급여일을 1년치 로그로 확인. 시트를 건드리지 않는다 |
 | `setEnvelopes` | `Setup.gs` | 세부예산 목록 변경 |

@@ -395,6 +395,66 @@ function diagnoseBudgets(month) {
   return text;
 }
 
+/**
+ * Budgets 의 같은 달·세부예산 0 원 중복 행을 찾아 로그로 보여 준다. 지우지 않는다.
+ * 봇이 예산을 못 읽던 동안 월 열기가 되풀이되며 쌓인 행이다. 지우려면 dedupeBudgetRowsCommit.
+ * @return {string}
+ */
+function dedupeBudgetRows() {
+  return runBudgetDedupe(false);
+}
+
+/**
+ * dedupeBudgetRows 가 고른 행을 실제로 지운다. 맨 위 행은 남기므로 봇·앱이 읽는 예산은 그대로다.
+ * Budgets 전용이다. 원장(Transactions)은 지우지 않는다(Golden Rule 3).
+ * @return {string}
+ */
+function dedupeBudgetRowsCommit() {
+  return runBudgetDedupe(true);
+}
+
+/** @param {boolean} commit true 면 지운다. */
+function runBudgetDedupe(commit) {
+  var rows = readAll(SHEETS.BUDGETS.name).map(function (r) {
+    return { row: r._row, month: toMonthStr(r.month), envelope: r.envelope, amount: r.amount };
+  });
+  var plan = budgetDuplicateRows(rows);
+  if (commit && plan.remove.length) {
+    var sheet = getSheet(SHEETS.BUDGETS.name);
+    // remove 는 아래 행부터다. 위에서부터 지우면 남은 행 번호가 밀린다.
+    plan.remove.forEach(function (r) {
+      sheet.deleteRow(r.row);
+    });
+    invalidateReadCache(SHEETS.BUDGETS.name);
+  }
+
+  var counts = {};
+  var order = [];
+  plan.remove.slice().reverse().forEach(function (r) {
+    var key = r.month + ' ' + r.envelope;
+    if (!counts[key]) {
+      counts[key] = 0;
+      order.push(key);
+    }
+    counts[key]++;
+  });
+  var lines = ['Budgets ' + rows.length + '행 · 0 원 중복 ' + plan.remove.length + '행 ' +
+    (commit ? '지움' : '찾음' + (plan.remove.length ? ' (지우려면 dedupeBudgetRowsCommit)' : ''))];
+  order.forEach(function (key) {
+    lines.push('· ' + key + ': ' + counts[key] + '행');
+  });
+  plan.keptNonZero.forEach(function (r) {
+    lines.push('남김 · ' + r.month + ' ' + r.envelope + ' ' + r.row + '행 금액 ' + r.amount +
+      ' (0 이 아니라 그대로 둠. 쓰이는 값은 ' + r.firstRow + '행)');
+  });
+  var text = lines.join('\n');
+  Logger.log(text);
+  if (commit) {
+    logEvent('', 'budget_dedupe', '', text.slice(0, 5000));
+  }
+  return text;
+}
+
 /** 전체 초기화. 두 번 실행해도 결과가 같다(멱등). */
 function runSetupAll() {
   var result = [];

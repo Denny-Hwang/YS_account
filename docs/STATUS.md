@@ -18,6 +18,9 @@
   셀 Date 는 스프레드시트 시간대로 풀고(`sheetTimeZone`),
   월 열기가 날짜 셀을 저절로 문자열로 고치며(`healBudgetMonths`), 전월 중복 행은 위의 것만 이어받는다.
   진단 `Setup.gs` 의 `diagnoseBudgets` 추가. 검증: `apps-script` 테스트 112개(새 시간대 테스트는 고치기 전 코드에서 실패 확인).
+  P14.5 (2026-10-01): `Budgets` 0 원 중복 행 정리 `dedupeBudgetRows`(미리보기)·`dedupeBudgetRowsCommit`(지움).
+  고르는 규칙은 순수 함수 `LedgerRules.budgetDuplicateRows`. 검증: `apps-script` 테스트 114개, `webapp` 테스트 8개·빌드 통과.
+  실제 시트에서 실행: 2026-09 세부예산마다 0 원 중복 10행씩 30행을 지워 `Budgets` 36행 → 6행(9·10월 각 3행).
   검증: `apps-script` 테스트 108개, `webapp` 테스트 8개, 타입 검사·빌드 통과.
 - **P13 완료** (2026-09-15): 오늘 화면에 날짜·세부예산·유형 직접 고르기(생략 가능), 원장 세부예산 목록을
   고정비 분류까지 넓힘(`Config.categories` 추가), 삭제 되돌리기, `봉투` → `세부예산` 용어 정리.
@@ -40,7 +43,6 @@ P14.4 까지 push·새 버전 배포했다. `normalizeBudgetMonths`(36셀), 10�
 (2026-09-15: 밀린 5건은 `webhookWatchdog` 이 회수했다.)
 
 ## 다음 할 일
--1. (선택) `Budgets` 의 0 짜리 중복 행 정리. 봇이 예산을 못 읽던 동안 쌓였다. 위의 행만 쓰므로 무해하다.
 0. **P14 반영.** 코드는 2026-10-01 push 로 봇 프로젝트에 들어갔다. `setupSheet` 를 이미 돌렸는지는 `Assets` 탭에 `kind` 열이 있는지로 본다. `clasp push` → `Setup.gs` 의 `setupSheet`(`Assets` 에 `kind` 열, Config 에 `categories` 키).
    웹앱 더보기 › 자산 › 새 스냅샷에서 401k·IRP·HSA·국민연금 잔액을 종류별로 넣는다(값은 저장소에 두지 않는다).
    로그인 유지가 실기기에서 어떻게 느껴지는지 본다: 1시간 안 재실행은 무음, 그 뒤엔 창이 잠깐 떴다 닫혀야 한다.
