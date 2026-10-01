@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  pickConfirmTarget, matchRecurringName, undoPlan, nextMonthBudgets, amortizeOnce, payoffMonths, monthScore,
+  pickConfirmTarget, matchRecurringName, undoPlan, nextMonthBudgets, budgetDuplicateRows, amortizeOnce, payoffMonths, monthScore,
   parseAmountRule, biweeklyPaydays, expectedAmountFor
 } = require('../src/LedgerRules.js');
 
@@ -150,4 +150,23 @@ test('예상 금액: 2주급은 급여일 수만큼, 나머지는 규칙대로',
 
   // 규칙을 못 읽으면 expected_amount 로 물러난다
   assert.equal(expectedAmountFor({ expected_amount: 42, amount_rule: 'biweekly:100@nope' }, '2026-02', 0), 42);
+});
+
+test('예산 중복 행: 맨 위 행은 남기고 그 아래 0 원 행만 아래부터 고른다', () => {
+  const plan = budgetDuplicateRows([
+    { row: 2, month: '2026-09', envelope: '식료품', amount: 1000 },
+    { row: 3, month: '2026-09', envelope: '생필품', amount: 0 },
+    { row: 5, month: '2026-09', envelope: '식료품', amount: 0 },
+    { row: 4, month: '2026-09', envelope: '식료품', amount: '' },
+    { row: 6, month: '2026-09', envelope: '생필품', amount: 0 },
+    { row: 7, month: '2026-10', envelope: '식료품', amount: 0 },
+    { row: 8, month: '2026-09', envelope: '식료품', amount: 50 },
+    { row: 9, month: '', envelope: '식료품', amount: 0 }
+  ]);
+  assert.deepEqual(plan.remove.map((r) => r.row), [6, 5, 4]);
+  // 맨 위가 0 이어도 맨 위는 남긴다(읽히는 행이 바뀌면 안 된다). 다른 달은 별개다.
+  assert.ok(!plan.remove.some((r) => r.row === 3 || r.row === 7));
+  // 0 이 아닌 아래 행은 지우지 않고 알린다.
+  assert.deepEqual(plan.keptNonZero, [{ row: 8, month: '2026-09', envelope: '식료품', amount: 50, firstRow: 2 }]);
+  assert.deepEqual(budgetDuplicateRows([]), { remove: [], keptNonZero: [] });
 });

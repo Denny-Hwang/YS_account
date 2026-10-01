@@ -26,6 +26,7 @@ class Sheet {
   autoResizeColumns() { return this; }
   cell(r, c) { while (this.rows.length < r) this.rows.push([]); const row = this.rows[r - 1]; while (row.length < c) row.push(''); return row; }
   appendRow(values) { this.rows.push(values.slice()); return this; }
+  deleteRow(n) { this.rows.splice(n - 1, 1); return this; }
   getRange(a, b, c, d) {
     if (typeof a === 'string') {
       const m = /^([A-Z]+)(\d+)$/.exec(a);
@@ -355,6 +356,36 @@ test('월 열기: 날짜로 저장된 전월 예산과 0 짜리 중복 행이 �
   assert.equal(ctx.getBudgetAmount('2026-10', '예비비'), -190.68);
   assert.match(text, /식료품 .*예산 \$1,000\.00/);
   rowsOf(ctx, 'Budgets').forEach((r) => assert.equal(typeof r.month, 'string'));
+});
+
+test('예산 중복 행 정리: 미리보기는 지우지 않고, 실행은 0 원 중복만 지워 읽히는 예산이 그대로다', () => {
+  const ctx = fresh();
+  for (let i = 0; i < 3; i++) {
+    ['식료품', '생필품', '예비비'].forEach((envelope) => {
+      ctx.appendRow('Budgets', { month: '2026-09', envelope, amount: 0, carryover: 'reset' });
+    });
+  }
+  ctx.appendRow('Budgets', { month: '2026-09', envelope: '식료품', amount: 50, carryover: 'reset' });
+  ctx.invalidateReadCache();
+  const before = rowsOf(ctx, 'Budgets').length;
+  const read = () => ['식료품', '생필품', '예비비'].map((e) => ctx.getBudgetAmount('2026-09', e));
+  const expected = read();
+  assert.deepEqual(expected, [1000, 100, 100]);
+
+  const preview = ctx.dedupeBudgetRows();
+  assert.match(preview, /0 원 중복 9행 찾음/);
+  assert.match(preview, /2026-09 식료품: 3행/);
+  assert.match(preview, /남김 · 2026-09 식료품 \d+행 금액 50/);
+  assert.equal(rowsOf(ctx, 'Budgets').length, before, '미리보기는 지우지 않는다');
+
+  assert.match(ctx.dedupeBudgetRowsCommit(), /0 원 중복 9행 지움/);
+  const after = rowsOf(ctx, 'Budgets');
+  assert.equal(after.length, before - 9);
+  ctx.invalidateReadCache();
+  assert.deepEqual(read(), expected);
+  assert.equal(ctx.getBudgetAmount('2026-08', '식료품'), 1000, '다른 달은 건드리지 않는다');
+  assert.ok(after.some((r) => r.month === '2026-09' && r.envelope === '식료품' && r.amount === 50));
+  assert.match(ctx.dedupeBudgetRowsCommit(), /0 원 중복 0행 지움/);
 });
 
 test('부채와 연결된 고정비를 확정하면 원금과 회차가 줄어든다', () => {
