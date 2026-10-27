@@ -71,6 +71,11 @@ let account: StoredAccount | null = readJson<StoredAccount>(ACCOUNT_KEY, (a) => 
 let pending: ((r: TokenResponse) => void) | null = null
 /** 같은 순간에 여러 요청이 토큰을 달라고 해도 팝업은 한 번만 띄운다. */
 let inflight: Promise<string> | null = null
+/**
+ * 팝업 응답을 이만큼 기다린다. 구글 창에 오류(invalid_client 등)가 뜬 채 닫히면
+ * 모바일 브라우저에서는 GIS 가 아무 콜백도 부르지 않아, 기한이 없으면 요청이 영원히 걸린다.
+ */
+const POPUP_TIMEOUT_MS = 90_000
 
 function isValidToken(t: Partial<StoredToken>): boolean {
   return typeof t.value === 'string' && typeof t.expiresAt === 'number' && t.expiresAt - Date.now() > 60_000
@@ -166,18 +171,39 @@ export async function getAccessToken(clientId: string, mode: 'silent' | 'user'):
   if (mode === 'silent' && reconsentDue()) {
     throw new AuthRequiredError('한 달에 한 번 구글 계정을 다시 확인합니다. 연결을 눌러 주세요.')
   }
-  if (inflight) return inflight
-  inflight = requestToken(clientId, mode).finally(() => {
-    inflight = null
+  // 사람이 다시 누르면 앞선 요청이 걸려 있어도 버리고 새로 띄운다. 그래야 오류 창을 닫은 뒤 다시 시도할 수 있다.
+  if (inflight && mode === 'user') cancelPending()
+  else if (inflight) return inflight
+  const mine = requestToken(clientId, mode).finally(() => {
+    if (inflight === mine) inflight = null
   })
-  return inflight
+  inflight = mine
+  return mine
+}
+
+/** 걸려 있는 팝업 요청을 "닫힘" 으로 끝낸다. 기다리던 쪽은 AuthRequiredError 를 받는다. */
+function cancelPending(): void {
+  pending?.({ error: 'popup_closed' })
+  pending = null
+  inflight = null
 }
 
 async function requestToken(clientId: string, mode: 'silent' | 'user'): Promise<string> {
   const tokenClient = await ensureClient(clientId)
   const forceConsent = mode === 'user' && reconsentDue()
   const response = await new Promise<TokenResponse>((resolve) => {
-    pending = resolve
+    const timer = setTimeout(() => {
+      if (pending === finish) pending = null
+      finish({ error: 'popup_closed' })
+    }, POPUP_TIMEOUT_MS)
+    let done = false
+    const finish = (r: TokenResponse) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      resolve(r)
+    }
+    pending = finish
     tokenClient.requestAccessToken({
       prompt: forceConsent ? 'consent' : '',
       ...(account?.email ? { hint: account.email } : {}),
@@ -228,10 +254,26 @@ export function forgetToken(): void {
   writeJson(TOKEN_KEY, null)
 }
 
+/**
+ * 클라이언트 ID 가 바뀌었을 때 부른다. 걸린 요청과 만들어 둔 토큰 클라이언트, 받은 토큰을 버린다.
+ * 기억한 계정(hint)은 남긴다. 계정까지 지우려면 signOut.
+ */
+export function resetAuth(): void {
+  cancelPending()
+  client = null
+  clientIdInUse = ''
+  forgetToken()
+}
+
+/** 토큰이 없어도 기억한 계정이 있으면 true. 설정 화면이 로그아웃 버튼을 보여 줄지 정한다. */
+export function hasRememberedAccount(): boolean {
+  return Boolean(account || token)
+}
+
 /** 구글에서 권한까지 해제하고 기억한 계정도 지운다. */
 export async function signOut(): Promise<void> {
   const current = token?.value
-  token = null
+  resetAuth()
   account = null
   writeJson(TOKEN_KEY, null)
   writeJson(ACCOUNT_KEY, null)

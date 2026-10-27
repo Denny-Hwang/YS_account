@@ -350,6 +350,11 @@ columns: {
 `/auth/audience` 에서 그 계정을 추가하고 다시 시도한다. 브라우저에 구글 계정이 여러 개면 시크릿 창에서 확인한다.
 게시 상태를 "프로덕션" 으로 올리지 않는다. 시트 권한은 민감한 범위라 심사가 필요하고, 두 사람만 쓰는 앱에는 테스트 상태로 충분하다(100명까지).
 
+**`Error 401: invalid_client` — "The OAuth client was not found"**
+그 기기에 입력한 클라이언트 ID 가 틀렸다(잘렸거나 한 글자 오타). 콘솔 설정 문제가 아니다.
+구글 창을 닫고 앱의 더보기 › 설정에서 ID 를 다시 붙여 넣고 저장한다. 저장하면 새 ID 로 다시 연결한다.
+모양이 틀린 값은 설정 화면이 저장 전에 거부한다. 반응이 없으면 설정의 "앱 다시 불러오기" 를 누른다.
+
 ### b. GitHub Pages 켜기
 1. 저장소 `Settings → Pages → Build and deployment → Source` 를 **GitHub Actions** 로 바꾼다.
 2. `main` 에 `webapp/` 변경이 올라가면 `.github/workflows/deploy-webapp.yml` 이 자동으로 배포한다.

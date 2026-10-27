@@ -37,6 +37,28 @@ export function isConfigured(s: Settings): boolean {
 }
 
 /**
+ * 붙여 넣은 클라이언트 ID 를 다듬는다. 폰에서 복사하면 중간에 줄바꿈·공백이 섞이는 일이 잦다.
+ */
+export function normalizeClientId(input: string): string {
+  return input.replace(/\s+/g, '').toLowerCase()
+}
+
+/**
+ * 클라이언트 ID 모양이 틀렸으면 이유를, 맞으면 빈 문자열을 돌려준다.
+ * 모양이 틀린 값으로 연결하면 구글이 "Error 401: invalid_client" 화면을 띄운다.
+ */
+export function clientIdProblem(clientId: string): string {
+  if (!clientId) return '클라이언트 ID 를 입력하세요.'
+  if (!clientId.endsWith('.apps.googleusercontent.com')) {
+    return '클라이언트 ID 는 .apps.googleusercontent.com 으로 끝나야 합니다. 끝까지 복사됐는지 보세요.'
+  }
+  if (!/^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/.test(clientId)) {
+    return '클라이언트 ID 모양이 아닙니다. "숫자-영문숫자.apps.googleusercontent.com" 이어야 합니다. "…" 로 잘린 값이 아닌지 보세요.'
+  }
+  return ''
+}
+
+/**
  * 붙여 넣은 값에서 스프레드시트 ID 만 뽑는다.
  * 전체 URL 을 그대로 붙여 넣는 경우가 많다.
  */
