@@ -63,7 +63,7 @@ const MORE_ITEMS: Array<{ id: Screen; label: string; hint: string }> = [
   { id: 'debts', label: '부채', hint: '남은 원금과 월 상환액' },
   { id: 'assets', label: '자산', hint: '계좌 잔액·주식·연금·401k·HSA 종류별 스냅샷' },
   { id: 'goals', label: '목표', hint: '목표액 대비 진행률' },
-  { id: 'setup', label: '설정', hint: '시트 연결과 로그아웃' },
+  { id: 'setup', label: '설정', hint: '시트 연결·급여(2주급) 금액·로그아웃' },
 ]
 
 export function App() {
@@ -235,6 +235,10 @@ export function App() {
           onSave={handleSave}
           onSignOut={() => void handleSignOut()}
           signedIn={signedIn}
+          workbook={workbook}
+          ctx={ctx}
+          today={today}
+          onChanged={reload}
         />
       )}
 

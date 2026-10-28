@@ -99,6 +99,15 @@ test('LedgerRules.js 의 2주급 규칙을 웹앱에서도 같은 값으로 읽�
   assert.equal(rules.expectedAmountFor(salary, '2026-02', 0), 5200)
 })
 
+test('급여일 짝짓기와 2주급 규칙 문자열도 웹앱에서 같은 값', async () => {
+  const rules = await loadShared('LedgerRules.js')
+  const row = { id: 'a', date: '2026-11-07', status: 'confirmed' }
+  const r = rules.matchPaydaySlots(['2026-11-06', '2026-11-20'], [row])
+  assert.equal(r.slots[0].row, row)
+  assert.equal(r.slots[1].row, null)
+  assert.equal(rules.biweeklyRuleString(3000, '2026-11-06'), 'biweekly:3000@2026-11-06')
+})
+
 test('금액 확정 고정비는 committed 로 잡히고 예산에 반영된다', async () => {
   const rules = await loadShared('LedgerRules.js')
   const budget = await loadShared('Budget.js')

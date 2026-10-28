@@ -3,7 +3,7 @@ import { formatUsd } from '@shared/Budget.js'
 import { Bullet, LineChart, RankBars, Stat } from '../components/Charts'
 import { RowSheet } from '../components/RowSheet'
 import { Card, Empty, Notice, Sheet } from '../components/Ui'
-import { ASSET_KINDS, TABS, appendManyTo, assetKindOf, latestAssetRows, latestAssetsTotal, monthsBack, nextIdFor, removeRows, type SheetRow, type Workbook } from '../lib/ledger'
+import { ASSET_KINDS, TABS, appendManyTo, assetKindOf, latestAssetRows, latestAssetsTotal, monthsBack, nextIdFor, patchIn, removeRows, type SheetRow, type Workbook } from '../lib/ledger'
 import { assetsByKind, assetsHistory, averageNet, debtOverview, debtSchedule, emergencyFund, monthlyTotals } from '../lib/metrics'
 import type { SheetsContext } from '../lib/sheets'
 
@@ -13,12 +13,40 @@ type Editing = SheetRow | 'new' | null
 export function Debts({ workbook, ctx, today, onChanged }: { workbook: Workbook; ctx: SheetsContext; today: string; onChanged: () => void }) {
   const [editing, setEditing] = useState<Editing>(null)
   const [error, setError] = useState<string | null>(null)
-  const debts = debtSchedule(workbook, today)
+  const all = debtSchedule(workbook, today)
+  // 상환이 끝난 부채(원금 0)는 요약·순위에서 빼고 아래 "상환 완료" 에만 둔다.
+  const debts = all.filter((d) => !d.paidOff)
+  const done = all.filter((d) => d.paidOff)
   const overview = debtOverview(debts)
   const longest = Math.max(0, ...debts.map((d) => d.amortized ?? d.remaining))
   const recurringOptions = workbook.recurring
     .filter((r) => String(r.type ?? 'expense').trim().toLowerCase() !== 'income')
     .map((r) => ({ value: String(r.id), label: `${String(r.id)} ${String(r.name)}` }))
+
+  /** 연결된 고정비. 상환 완료 때 그 고정비를 멈춰 다음 달부터 상환 예정이 잡히지 않게 한다. */
+  function linkedRecurring(row: SheetRow): SheetRow | null {
+    const id = String(row.recurring_id ?? '').trim()
+    if (!id) return null
+    return workbook.recurring.find((r) => String(r.id).trim() === id && String(r.active).trim().toUpperCase() !== 'N') ?? null
+  }
+
+  /** 상환 완료: 원금·남은 회차를 0 으로, 메모에 날짜를 남기고, 연결 고정비를 멈춘다. 행은 남겨 기록으로 본다. */
+  async function markPaidOff(row: SheetRow) {
+    const note = String(row.notes ?? '').trim()
+    await patchIn(ctx, workbook, TABS.debts, row, {
+      principal: 0,
+      remaining_count: 0,
+      notes: note.startsWith('상환 완료') ? note : `상환 완료 ${today}${note ? ` · ${note}` : ''}`,
+    })
+    const linked = linkedRecurring(row)
+    if (linked) await patchIn(ctx, workbook, TABS.recurring, linked, { active: 'N' })
+  }
+
+  async function removeDebt(row: SheetRow) {
+    await removeRows(ctx, workbook, TABS.debts, [row])
+  }
+
+  const editingLinked = editing && editing !== 'new' ? linkedRecurring(editing) : null
 
   return (
     <div className="viz">
@@ -41,7 +69,7 @@ export function Debts({ workbook, ctx, today, onChanged }: { workbook: Workbook;
       </Card>
 
       {debts.length === 0 ? (
-        <Empty>등록된 부채가 없습니다.</Empty>
+        <Empty>{done.length ? '남은 부채가 없습니다.' : '등록된 부채가 없습니다.'}</Empty>
       ) : (
         <>
           <Card title="원금 구성">
@@ -70,10 +98,39 @@ export function Debts({ workbook, ctx, today, onChanged }: { workbook: Workbook;
               format={(n) => `${n}개월`}
             />
             <p className="meta" style={{ marginTop: 10 }}>
-              가장 오래 남은 것은 {longest}개월입니다. 원금·이율·월 상환액으로 계산한 값이라 시트의 남은 회차와 다를 수 있습니다. 항목을 누르면 고칠 수 있습니다.
+              가장 오래 남은 것은 {longest}개월입니다. 원금·이율·월 상환액으로 계산한 값이라 시트의 남은 회차와 다를 수 있습니다.
             </p>
           </Card>
+          <Card title="부채 목록">
+            {debts.map((d) => (
+              <div className="tx" key={d.id || d.row._row} role="button" tabIndex={0} onClick={() => setEditing(d.row)} onKeyDown={(e) => { if (e.key === 'Enter') setEditing(d.row) }}>
+                <span className="grow ellipsis">
+                  {d.name}
+                  <br />
+                  <span className="meta">{d.rate}% · 월 {formatUsd(d.monthlyUsd)}{d.linked ? ` · ${d.linked} 연결` : ''}</span>
+                </span>
+                <span className="amount">{formatUsd(d.principalUsd)}</span>
+                <span className="meta">›</span>
+              </div>
+            ))}
+            <p className="meta" style={{ marginTop: 10 }}>누르면 고치기·상환 완료·삭제를 할 수 있습니다.</p>
+          </Card>
         </>
+      )}
+
+      {done.length > 0 && (
+        <Card title="상환 완료">
+          {done.map((d) => (
+            <div className="tx" key={d.id || d.row._row} role="button" tabIndex={0} onClick={() => setEditing(d.row)} onKeyDown={(e) => { if (e.key === 'Enter') setEditing(d.row) }}>
+              <span className="grow ellipsis">
+                {d.name}
+                {String(d.row.notes ?? '').trim() && <span className="meta"> · {String(d.row.notes)}</span>}
+              </span>
+              <span className="pill">완료</span>
+            </div>
+          ))}
+          <p className="meta" style={{ marginTop: 10 }}>기록으로 남겨 둡니다. 필요 없으면 눌러서 삭제하세요.</p>
+        </Card>
       )}
 
       {editing && (
@@ -94,6 +151,18 @@ export function Debts({ workbook, ctx, today, onChanged }: { workbook: Workbook;
             { key: 'notes', label: '메모' },
           ]}
           defaults={{ id: nextIdFor(workbook.debts, 'D'), currency: 'USD', recurring_id: '' }}
+          onDelete={removeDebt}
+          extraAction={
+            editing !== 'new' && (Number(editing.principal) || 0) > 0
+              ? {
+                  label: '상환 완료',
+                  confirm: `"${String(editing.name)}" 을(를) 상환 완료로 바꿀까요? 남은 원금과 회차가 0 이 됩니다.${
+                    editingLinked ? ` 연결된 고정비 "${String(editingLinked.name)}" 도 멈춰 다음 달부터 상환 예정이 잡히지 않습니다.` : ''
+                  }`,
+                  run: markPaidOff,
+                }
+              : undefined
+          }
           onClose={() => setEditing(null)}
           onError={setError}
           onSaved={() => {

@@ -151,6 +151,55 @@ function isReservedStatus(status) {
 }
 
 /**
+ * 2주급 급여일마다 원장 행을 짝지운다. 급여일 하나에 예정 행 하나를 두고 하나씩 확정하기 위해서다.
+ *
+ * 실제 입금일은 급여일과 하루이틀 어긋날 수 있어 날짜가 같지 않아도 가장 가까운 급여일에 붙인다.
+ * 7일보다 멀면 붙이지 않는다(2주 간격의 다른 급여일 몫이다). 이른 행부터 차례로 붙여 한 급여일엔 한 행만 간다.
+ * 짝이 없는 급여일은 아직 예정 행도 기록도 없다는 뜻이다(봇은 이 자리에 예정 행을 만들고, 웹앱은 "들어옴" 버튼을 띄운다).
+ * @param {!Array<string>} paydays 'YYYY-MM-DD' 오름차순 (biweeklyPaydays 결과)
+ * @param {!Array<!Object>} rows 그 정의로 묶인 그 달 원장 행(삭제 제외). date 는 'YYYY-MM-DD' 로 시작하는 문자열
+ * @return {{slots: !Array<{date: string, row: ?Object}>, extras: !Array<!Object>}}
+ *   extras 는 어느 급여일에도 붙지 않은 행(보너스, 같은 급여일의 두 번째 기록 등)
+ */
+function matchPaydaySlots(paydays, rows) {
+  var slots = (paydays || []).map(function (d) { return { date: d, row: null }; });
+  var extras = [];
+  var sorted = (rows || []).slice().sort(function (a, b) {
+    return String(a.date).slice(0, 10).localeCompare(String(b.date).slice(0, 10));
+  });
+  sorted.forEach(function (row) {
+    var day = rulesDayNumber(String(row.date).slice(0, 10));
+    var best = -1;
+    var bestGap = 8;
+    slots.forEach(function (slot, i) {
+      if (slot.row || day === null) {
+        return;
+      }
+      var gap = Math.abs(rulesDayNumber(slot.date) - day);
+      if (gap < bestGap) {
+        best = i;
+        bestGap = gap;
+      }
+    });
+    if (best >= 0) {
+      slots[best].row = row;
+    } else {
+      extras.push(row);
+    }
+  });
+  return { slots: slots, extras: extras };
+}
+
+/** 2주급 규칙 문자열을 만든다. 금액은 소수 둘째 자리까지. 기준일이 날짜가 아니면 빈 문자열. */
+function biweeklyRuleString(perCheck, anchor) {
+  var amount = rulesRound(perCheck);
+  if (!(amount > 0) || rulesDayNumber(anchor) === null) {
+    return '';
+  }
+  return 'biweekly:' + amount + '@' + String(anchor).trim();
+}
+
+/**
  * 고정 항목을 확정할 때 어느 행을 손댈지 정한다.
  * 그 달의 예약 행(expected 또는 committed)만 확정 대상이다.
  * 이미 confirmed 인 행은 절대 덮어쓰지 않는다.
@@ -403,6 +452,8 @@ if (typeof module !== 'undefined') {
   module.exports = {
     parseAmountRule: parseAmountRule,
     biweeklyPaydays: biweeklyPaydays,
+    matchPaydaySlots: matchPaydaySlots,
+    biweeklyRuleString: biweeklyRuleString,
     expectedAmountFor: expectedAmountFor,
     pickConfirmTarget: pickConfirmTarget,
     recurringCertainty: recurringCertainty,

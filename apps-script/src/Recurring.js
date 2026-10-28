@@ -238,6 +238,7 @@ function postMonthlyRecurring(yyyyMm) {
   var month = yyyyMm || currentMonthStr();
 
   // 멱등성의 핵심: 그 달에 status 가 expected 또는 confirmed 인 행이 이미 있으면 건너뛴다.
+  // 2주급도 같다. 예전 방식(한 달 한 행)으로 열린 달에 급여일 행을 덧붙이면 예정 금액이 두 번 잡힌다.
   var posted = {};
   monthTransactions(month).forEach(function (row) {
     var id = String(row.recurring_id || '').trim();
@@ -257,31 +258,43 @@ function postMonthlyRecurring(yyyyMm) {
       return; // variable 은 예상치일 뿐이다. 레슨처럼 건별로 기록되므로 예약 행을 만들지 않는다
     }
     var currency = String(definition.currency || 'USD').trim().toUpperCase() || 'USD';
-    var amount = recurringExpectedAmount(definition, month);
-    var now = nowIso();
-    appendRow(SHEETS.TRANSACTIONS.name, {
-      id: newId('tx'),
-      date: recurringDateForDefinition(definition, month),
-      type: recurringType(definition),
-      kind: 'fixed',
-      category: String(definition.category || ''),
-      envelope: '',
-      merchant: String(definition.name || id),
-      amount: amount,
-      currency: currency,
-      amount_usd: toUsd(amount, currency),
-      recurring_id: id,
-      status: initialRecurringStatus(definition),
-      memo: '',
-      payer: '',
-      source: 'recurring',
-      created_at: now,
-      updated_at: now,
-      updated_by: 'system'
+    var rule = parseAmountRule(definition.amount_rule);
+    var paydays = rule.type === 'biweekly' ? biweeklyPaydays(month, rule.anchor) : [];
+    var plan = paydays.length
+      // 2주급은 급여일마다 1회 금액으로 예정 행을 하나씩 둔다. 들어올 때마다 하나씩 확정한다.
+      ? paydays.map(function (date) { return { date: date, amount: rule.perCheck }; })
+      : [{ date: recurringDateForDefinition(definition, month), amount: recurringExpectedAmount(definition, month) }];
+    plan.forEach(function (item) {
+      appendRecurringRow(definition, id, currency, item.date, item.amount);
+      added++;
     });
-    added++;
   });
   return added;
+}
+
+/** postMonthlyRecurring 이 쓰는 예약 행 하나. */
+function appendRecurringRow(definition, id, currency, date, amount) {
+  var now = nowIso();
+  appendRow(SHEETS.TRANSACTIONS.name, {
+    id: newId('tx'),
+    date: date,
+    type: recurringType(definition),
+    kind: 'fixed',
+    category: String(definition.category || ''),
+    envelope: '',
+    merchant: String(definition.name || id),
+    amount: amount,
+    currency: currency,
+    amount_usd: toUsd(amount, currency),
+    recurring_id: id,
+    status: initialRecurringStatus(definition),
+    memo: '',
+    payer: '',
+    source: 'recurring',
+    created_at: now,
+    updated_at: now,
+    updated_by: 'system'
+  });
 }
 
 /**

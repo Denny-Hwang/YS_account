@@ -91,6 +91,13 @@ declare module '@shared/LedgerRules.js' {
   }
   export function parseAmountRule(rule: string): AmountRule
   export function biweeklyPaydays(month: string, anchor: string): string[]
+  /** 급여일마다 원장 행을 짝지운다(가장 가까운 급여일, 7일 이내). */
+  export function matchPaydaySlots<T extends Record<string, unknown>>(
+    paydays: string[],
+    rows: T[]
+  ): { slots: Array<{ date: string; row: T | null }>; extras: T[] }
+  /** 'biweekly:<금액>@<기준일>'. 값이 틀리면 빈 문자열. */
+  export function biweeklyRuleString(perCheck: number, anchor: string): string
   export function expectedAmountFor(
     definition: Record<string, unknown>,
     month: string,

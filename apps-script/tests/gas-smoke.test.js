@@ -503,12 +503,26 @@ test('2주급 급여: 3번 받는 달은 예상이 1.5배, 받을 때마다 행�
   assert.equal(ctx.recurringExpectedAmount(salary, '2026-09'), 5200);
   assert.equal(ctx.recurringExpectedAmount(salary, '2026-07'), 7800);
 
-  // 예정 행은 그 달 첫 급여일에 만들어진다.
+  // 예정 행은 급여일마다 1회 금액으로 하나씩 만들어진다. 다시 돌려도 늘지 않는다.
   ctx.postMonthlyRecurring('2026-10');
-  const oct = ctx.readAll('Transactions').filter((r) => r.recurring_id === 'I01' && String(r.date).slice(0, 7) === '2026-10');
-  assert.equal(oct.length, 1);
-  assert.equal(oct[0].date, '2026-10-09');
-  assert.equal(oct[0].amount, 5200);
+  ctx.postMonthlyRecurring('2026-10');
+  const octRows = () => ctx.readAll('Transactions').filter((r) => r.recurring_id === 'I01' && String(r.date).slice(0, 7) === '2026-10');
+  const oct = octRows();
+  assert.deepEqual(Array.from(oct, (r) => r.date), ['2026-10-09', '2026-10-23']);
+  assert.deepEqual(Array.from(oct, (r) => Number(r.amount)), [2600, 2600]);
+  assert.ok(oct.every((r) => r.status === 'expected'));
+
+  // 봇에 급여를 보내면 이른 급여일 행부터 하나씩 확정된다.
+  ctx.updateRowById('Transactions', oct[0].id, { status: 'confirmed', date: '2026-10-10', amount: 2610, amount_usd: 2610 });
+  ctx.invalidateReadCache();
+  ctx.postMonthlyRecurring('2026-10');
+  assert.equal(octRows().length, 2);
+  const next = ctx.pickConfirmTarget(ctx.monthTransactions('2026-10'), 'I01').target;
+  assert.equal(next.date, '2026-10-23');
+
+  // 예전 방식으로 이미 열린 달(9월, 한 행)에는 급여일 행을 덧붙이지 않는다. 예정이 두 번 잡히는 걸 막는다.
+  ctx.postMonthlyRecurring('2026-09');
+  assert.equal(ctx.readAll('Transactions').filter((r) => r.recurring_id === 'I01' && String(r.date).slice(0, 7) === '2026-09').length, 1);
 
   // 이번 달(2026-09) 급여를 두 번 받으면 두 행이 남는다. 첫 건이 덮어써지지 않는다.
   msg(ctx, '급여 2600');

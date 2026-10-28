@@ -25,6 +25,7 @@ export function RowSheet({
   onError,
   onDelete,
   deleteLabel = '삭제',
+  extraAction,
 }: {
   title: string
   tab: string
@@ -39,6 +40,8 @@ export function RowSheet({
   /** 있으면 기존 행에 "삭제" 버튼이 생긴다. 확인을 받은 뒤 부른다. 끝나면 onSaved 와 같이 화면을 새로 읽는다. */
   onDelete?: (row: SheetRow) => Promise<void>
   deleteLabel?: string
+  /** 기존 행에만 붙는 추가 버튼(예: 부채 "상환 완료"). confirm 문구로 확인을 받은 뒤 run 을 부른다. */
+  extraAction?: { label: string; confirm: string; run: (row: SheetRow) => Promise<void> }
 }) {
   const [form, setForm] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {}
@@ -83,6 +86,21 @@ export function RowSheet({
     }
   }
 
+  async function runExtra() {
+    if (!row || !extraAction) return
+    if (!window.confirm(extraAction.confirm)) return
+    setBusy(true)
+    try {
+      await extraAction.run(row)
+      onSaved()
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err))
+      onClose()
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <Sheet title={title} onClose={onClose}>
       {fields.map((f) => (
@@ -113,6 +131,11 @@ export function RowSheet({
         <button className="primary" onClick={() => void save()} disabled={busy}>
           저장
         </button>
+        {row && extraAction && (
+          <button onClick={() => void runExtra()} disabled={busy}>
+            {extraAction.label}
+          </button>
+        )}
         {row && onDelete ? (
           <button className="danger" onClick={() => void remove()} disabled={busy}>
             {deleteLabel}

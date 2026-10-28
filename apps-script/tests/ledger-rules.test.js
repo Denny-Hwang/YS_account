@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   pickConfirmTarget, matchRecurringName, undoPlan, nextMonthBudgets, budgetDuplicateRows, amortizeOnce, payoffMonths, monthScore,
-  parseAmountRule, biweeklyPaydays, expectedAmountFor
+  parseAmountRule, biweeklyPaydays, expectedAmountFor, matchPaydaySlots, biweeklyRuleString
 } = require('../src/LedgerRules.js');
 
 test('확정 대상은 expected 행뿐이다. confirmed 는 덮어쓰지 않는다', () => {
@@ -133,6 +133,45 @@ test('2주급 급여일: 기준일이 미래여도 뒤로 세고, 잘못된 값�
   assert.deepEqual(biweeklyPaydays('2025-12', '2026-01-02'), ['2025-12-05', '2025-12-19']);
   assert.deepEqual(biweeklyPaydays('2026-01', 'bad'), []);
   assert.deepEqual(biweeklyPaydays('bad', '2026-01-02'), []);
+});
+
+test('2주급 기준일 11-06: 11월 6·20일, 12월 4·18일, 1월은 세 번', () => {
+  assert.deepEqual(biweeklyPaydays('2026-11', '2026-11-06'), ['2026-11-06', '2026-11-20']);
+  assert.deepEqual(biweeklyPaydays('2026-12', '2026-11-06'), ['2026-12-04', '2026-12-18']);
+  assert.deepEqual(biweeklyPaydays('2027-01', '2026-11-06'), ['2027-01-01', '2027-01-15', '2027-01-29']);
+});
+
+test('급여일 짝짓기: 가까운 급여일에 하나씩, 7일 넘게 먼 행은 남는다', () => {
+  const paydays = ['2026-11-06', '2026-11-20'];
+  // 기록 없음 → 두 자리 모두 빈칸
+  assert.deepEqual(matchPaydaySlots(paydays, []).slots.map((s) => s.row), [null, null]);
+
+  // 첫 급여가 하루 늦게 들어왔다
+  const late = { id: 'a', date: '2026-11-07', status: 'confirmed' };
+  let r = matchPaydaySlots(paydays, [late]);
+  assert.equal(r.slots[0].row, late);
+  assert.equal(r.slots[1].row, null);
+
+  // 예전 방식(첫 급여일 예정 행 하나)도 첫 자리에 붙는다
+  const old = { id: 'b', date: '2026-11-06', status: 'expected' };
+  r = matchPaydaySlots(paydays, [old]);
+  assert.equal(r.slots[0].row, old);
+
+  // 같은 급여일 두 번째 기록과 동떨어진 보너스는 extras
+  const dup = { id: 'c', date: '2026-11-06', status: 'confirmed' };
+  const bonus = { id: 'd', date: '2026-11-30', status: 'confirmed' };
+  r = matchPaydaySlots(paydays, [dup, old, bonus]);
+  assert.equal(r.slots[0].row.id, 'c');
+  assert.equal(r.slots[1].row, null); // 11-06 짜리 두 번째 행은 14일 떨어진 20일에 붙지 않는다
+  assert.deepEqual(r.extras.map((x) => x.id).sort(), ['b', 'd']);
+});
+
+test('2주급 규칙 문자열', () => {
+  assert.equal(biweeklyRuleString(3000, '2026-11-06'), 'biweekly:3000@2026-11-06');
+  assert.equal(biweeklyRuleString(3012.456, '2026-11-06'), 'biweekly:3012.46@2026-11-06');
+  assert.equal(biweeklyRuleString(0, '2026-11-06'), '');
+  assert.equal(biweeklyRuleString(3000, '11/06'), '');
+  assert.deepEqual(parseAmountRule(biweeklyRuleString(3012.46, '2026-11-06')), { type: 'biweekly', perCheck: 3012.46, anchor: '2026-11-06' });
 });
 
 test('예상 금액: 2주급은 급여일 수만큼, 나머지는 규칙대로', () => {
