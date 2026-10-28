@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Card, Notice } from './components/Ui'
-import { AuthRequiredError, getAccessToken, hasToken, signOut } from './lib/auth'
+import { AuthRequiredError, getAccessToken, hasToken, resetAuth, signOut } from './lib/auth'
 import { loadWorkbook, todayIn, type Workbook } from './lib/ledger'
 import { isConfigured, loadSettings, saveSettings, type Settings } from './lib/settings'
 import type { SheetsContext } from './lib/sheets'
@@ -139,6 +139,14 @@ export function App() {
   }
 
   function handleSave(next: Settings) {
+    // 클라이언트 ID 를 고쳤으면 틀린 ID 로 걸려 있던 요청과 토큰 클라이언트를 버려야 새 ID 로 다시 연결된다.
+    if (next.clientId !== clientId) {
+      resetAuth()
+      setSignedIn(false)
+      setWorkbook(null)
+    }
+    setError(null)
+    setAuthNeeded(null)
     saveSettings(next)
     setSettings(next)
     if (isConfigured(next)) setScreen('today')
@@ -148,7 +156,19 @@ export function App() {
     await signOut()
     setSignedIn(false)
     setWorkbook(null)
+    setError(null)
+    setAuthNeeded(null)
   }
+
+  // 로그인이 막혔을 때 언제든 설정으로 가서 ID 를 고치거나 로그아웃할 수 있게 한다.
+  const loginHelp = (
+    <p className="meta" style={{ marginTop: 8 }}>
+      구글 창에 invalid_client 가 뜨면 클라이언트 ID 가 틀린 것입니다. 창을 닫고{' '}
+      <button type="button" className="ghost" onClick={() => setScreen('setup')}>
+        설정 열기
+      </button>
+    </p>
+  )
 
   const timezone = workbook?.config.timezone || 'America/Los_Angeles'
   const today = todayIn(timezone)
@@ -189,6 +209,7 @@ export function App() {
           <div style={{ marginTop: 8 }}>
             <button onClick={() => void connect()}>구글 계정으로 다시 연결</button>
           </div>
+          {screen !== 'setup' && loginHelp}
         </Notice>
       )}
 
@@ -204,6 +225,7 @@ export function App() {
               연결
             </button>
           </span>
+          {loginHelp}
         </Notice>
       )}
 
@@ -241,6 +263,7 @@ export function App() {
               </button>
             </div>
           )}
+          {!loading && loginHelp}
         </Notice>
       )}
 

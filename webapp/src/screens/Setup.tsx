@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Card, Field, Notice } from '../components/Ui'
-import { connectedEmail, reconsentDate } from '../lib/auth'
-import { extractSpreadsheetId, type Settings } from '../lib/settings'
+import { connectedEmail, hasRememberedAccount, reconsentDate } from '../lib/auth'
+import { clientIdProblem, extractSpreadsheetId, normalizeClientId, type Settings } from '../lib/settings'
 
 export function Setup({
   settings,
@@ -17,15 +17,22 @@ export function Setup({
   const [clientId, setClientId] = useState(settings.clientId)
   const [spreadsheet, setSpreadsheet] = useState(settings.spreadsheetId)
   const [saved, setSaved] = useState(false)
+  const [problem, setProblem] = useState('')
   const email = connectedEmail()
   const nextCheck = reconsentDate()
+  // 토큰이 없어도 기억한 계정이 남아 있으면 지울 수 있어야 한다. 잘못된 계정이 hint 로 계속 쓰이는 걸 막는다.
+  const canSignOut = signedIn || hasRememberedAccount()
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
-    onSave({
-      clientId: clientId.trim(),
-      spreadsheetId: extractSpreadsheetId(spreadsheet),
-    })
+    const id = normalizeClientId(clientId)
+    const sheet = extractSpreadsheetId(spreadsheet)
+    const why = clientIdProblem(id) || (sheet ? '' : '스프레드시트 주소를 입력하세요.')
+    setProblem(why)
+    setSaved(false)
+    if (why) return
+    setClientId(id)
+    onSave({ clientId: id, spreadsheetId: sheet })
     setSaved(true)
   }
 
@@ -59,14 +66,38 @@ export function Setup({
             <button className="primary" type="submit">
               저장하고 연결
             </button>
-            {signedIn && (
+            {canSignOut && (
               <button type="button" className="ghost" onClick={onSignOut}>
                 로그아웃
               </button>
             )}
           </div>
+          {problem && (
+            <p className="meta" style={{ marginTop: 10, color: 'var(--bad)' }}>
+              {problem}
+            </p>
+          )}
           {saved && <p className="meta" style={{ marginTop: 10 }}>저장했습니다.</p>}
         </form>
+      </Card>
+
+      <Card title="로그인이 막혔을 때">
+        <ul style={{ paddingLeft: 18, margin: 0, color: 'var(--muted)', fontSize: 14 }}>
+          <li>
+            구글 창에 <b>Error 401: invalid_client</b> 가 뜨면 위 클라이언트 ID 가 틀린 것입니다. 구글 창을 닫고
+            여기서 고친 뒤 저장하면 다시 연결합니다.
+          </li>
+          <li>
+            <b>Error 403: access_denied</b> 는 그 계정이 테스트 사용자에 없다는 뜻입니다. 다른 계정으로 들어갔다면
+            로그아웃 후 다시 연결합니다.
+          </li>
+          <li>그래도 반응이 없으면 아래 버튼으로 앱을 다시 불러옵니다. 입력한 설정은 남습니다.</li>
+        </ul>
+        <div className="actions" style={{ marginTop: 10 }}>
+          <button type="button" className="ghost" onClick={() => window.location.reload()}>
+            앱 다시 불러오기
+          </button>
+        </div>
       </Card>
 
       <Card title="로그인 유지">
