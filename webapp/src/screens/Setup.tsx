@@ -1,18 +1,30 @@
 import { useState } from 'react'
 import { Card, Field, Notice } from '../components/Ui'
 import { connectedEmail, hasRememberedAccount, reconsentDate } from '../lib/auth'
+import type { Workbook } from '../lib/ledger'
 import { clientIdProblem, extractSpreadsheetId, normalizeClientId, type Settings } from '../lib/settings'
+import type { SheetsContext } from '../lib/sheets'
+import { SalarySettings } from './SalarySettings'
 
 export function Setup({
   settings,
   onSave,
   onSignOut,
   signedIn,
+  workbook,
+  ctx,
+  today,
+  onChanged,
 }: {
   settings: Settings
   onSave: (next: Settings) => void
   onSignOut: () => void
   signedIn: boolean
+  /** 시트를 읽었으면 급여 설정을 보여 준다. 아직이면 null. */
+  workbook: Workbook | null
+  ctx: SheetsContext
+  today: string
+  onChanged: () => void
 }) {
   const [clientId, setClientId] = useState(settings.clientId)
   const [spreadsheet, setSpreadsheet] = useState(settings.spreadsheetId)
@@ -99,6 +111,8 @@ export function Setup({
           </button>
         </div>
       </Card>
+
+      <SalarySettings workbook={workbook} ctx={ctx} today={today} onChanged={onChanged} />
 
       <Card title="로그인 유지">
         <p className="meta" style={{ margin: 0 }}>

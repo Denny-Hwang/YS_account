@@ -3,8 +3,8 @@
  * "실제" 는 status 가 active 또는 confirmed 인 행만 센다. expected 는 예정이고 deleted 는 없는 것이다.
  */
 import { daysInMonth } from '@shared/Budget.js'
-import { biweeklyPaydays, expectedAmountFor, parseAmountRule, payoffMonths } from '@shared/LedgerRules.js'
-import { ASSET_KINDS, assetKindOf, assetUsd, budgetAmount, configList, configNumber, isCounted, latestAssetRows, latestAssetsTotal, monthsBack, recurringTypeOf, type AssetKind, type SheetRow, type Workbook } from './ledger'
+import { biweeklyPaydays, expectedAmountFor, matchPaydaySlots, parseAmountRule, payoffMonths } from '@shared/LedgerRules.js'
+import { ASSET_KINDS, assetKindOf, assetUsd, budgetAmount, configList, configNumber, isCounted, isSettled, latestAssetRows, latestAssetsTotal, monthsBack, recurringTypeOf, type AssetKind, type SheetRow, type Workbook } from './ledger'
 
 const r2 = (n: number) => Math.round(n * 100) / 100
 const usd = (row: SheetRow) => Number(row.amount_usd) || 0
@@ -185,6 +185,34 @@ export function paydaysOf(row: SheetRow, month: string): string[] {
   return rule.type === 'biweekly' ? biweeklyPaydays(month, rule.anchor as string) : []
 }
 
+/** 2주급 1회 금액. 2주급이 아니면 null. */
+export function perCheckOf(row: SheetRow): number | null {
+  const rule = parseAmountRule(String(row.amount_rule ?? ''))
+  return rule.type === 'biweekly' ? Number(rule.perCheck) || 0 : null
+}
+
+export interface PaydaySlot {
+  date: string
+  /** 이 급여일에 붙은 원장 행. 없으면 아직 예정 행도 기록도 없다. */
+  row: SheetRow | null
+  /** 'confirmed' 면 들어옴, 'reserved' 면 예정 행이 있음, 'none' 이면 행 없음(예정으로 보여 준다). */
+  state: 'confirmed' | 'reserved' | 'none'
+}
+
+/**
+ * 2주급 수입원의 그 달 급여일별 상태. 급여일 하나에 한 줄이다.
+ * 예정 행은 봇이 달을 열 때 급여일마다 만들지만, 예전 방식(한 달 한 행)으로 열린 달이나 아직 안 열린 달도
+ * 급여일 줄은 똑같이 보여 준다. 행이 없는 급여일을 "들어옴" 으로 누르면 확정 행을 새로 쓴다.
+ */
+export function paydaySlots(source: RecurringActual, month: string): PaydaySlot[] {
+  const own = source.rows.filter((t) => String(t.recurring_id).trim() === source.id && String(t.status) !== 'deleted')
+  return matchPaydaySlots(paydaysOf(source.row, month), own).slots.map((slot) => ({
+    date: slot.date,
+    row: slot.row,
+    state: !slot.row ? 'none' : isSettled(slot.row) ? 'confirmed' : 'reserved',
+  }))
+}
+
 /**
  * Recurring 정의별 이번 달 실제.
  * recurring_id 로 묶인 행을 합한다. variable 정의는 같은 category 의 기록도 합한다(사전이 category 만 남긴 경우).
@@ -303,6 +331,8 @@ export function debtSchedule(wb: Workbook, today: string) {
         currency: String(row.currency || 'USD').trim().toUpperCase(),
         payoff: endOf(amortized ?? remaining),
         linked: String(row.recurring_id ?? '').trim(),
+        /** 남은 원금이 0 이하면 상환이 끝난 부채다. 요약·순위에서 빼고 "상환 완료" 목록에 둔다. */
+        paidOff: (Number(row.principal) || 0) <= 0,
       }
     })
     .sort((a, b) => b.principalUsd - a.principalUsd)
