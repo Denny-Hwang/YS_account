@@ -96,6 +96,16 @@ declare module '@shared/LedgerRules.js' {
     paydays: string[],
     rows: T[]
   ): { slots: Array<{ date: string; row: T | null }>; extras: T[] }
+  /** 둘로 나뉜 건별 수입원을 합칠 때 옮길 원장·가맹점 사전 행과 바꿀 값. index 는 넘긴 배열의 위치. */
+  export function sourceMergePlan(
+    from: Record<string, unknown>,
+    to: Record<string, unknown>,
+    transactions: Array<Record<string, unknown>>,
+    merchants: Array<Record<string, unknown>>
+  ): {
+    transactions: Array<{ index: number; patch: Record<string, string> }>
+    merchants: Array<{ index: number; patch: Record<string, string> }>
+  }
   /** 'biweekly:<금액>@<기준일>'. 값이 틀리면 빈 문자열. */
   export function biweeklyRuleString(perCheck: number, anchor: string): string
   export function expectedAmountFor(

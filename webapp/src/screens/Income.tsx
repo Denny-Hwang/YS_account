@@ -11,11 +11,13 @@ import {
   loadWorkbook,
   newTxId,
   nextIdFor,
+  planSourceMerge,
   nowIso,
   patchIn,
   patchTransaction,
   softDeleteTransaction,
   statusBadge,
+  writeMergeEdits,
   type SheetRow,
   type Workbook,
 } from '../lib/ledger'
@@ -39,6 +41,8 @@ export function Income({ workbook, ctx, today, onChanged }: { workbook: Workbook
   // "들어옴" 을 누른 급여일. 금액·날짜를 확인하고 확정한다.
   const [confirming, setConfirming] = useState<{ source: RecurringActual; slot: PaydaySlot } | null>(null)
   // 방금 확정한 급여를 되돌리는 방법. 예정 행을 확정했으면 예정으로, 새로 썼으면 삭제로 되돌린다.
+  // "합치기" 를 누른 수입원(from). 같은 수입원이 둘로 나뉘어 등록됐을 때 쓴다.
+  const [merging, setMerging] = useState<RecurringActual | null>(null)
   const [undoConfirm, setUndoConfirm] = useState<{ label: string; run: () => Promise<void> } | null>(null)
 
   const plan = incomePlan(workbook, month)
@@ -94,7 +98,7 @@ export function Income({ workbook, ctx, today, onChanged }: { workbook: Workbook
       {undoConfirm && (
         <Notice kind="info">
           <span className="row" style={{ gap: 10 }}>
-            <span className="grow">{undoConfirm.label} 확정했습니다.</span>
+            <span className="grow">{undoConfirm.label}</span>
             <button className="ghost" style={{ padding: '2px 10px' }} onClick={() => void runUndoConfirm()}>
               되돌리기
             </button>
@@ -211,6 +215,11 @@ export function Income({ workbook, ctx, today, onChanged }: { workbook: Workbook
                         <button className="ghost" style={{ padding: '4px 12px' }} onClick={() => setEditing(s.row)}>
                           수입원 수정
                         </button>
+                        {s.kind !== 'fixed' && plan.sources.some((o) => o.id !== s.id && o.kind !== 'fixed') && (
+                          <button className="ghost" style={{ padding: '4px 12px' }} disabled={busy} onClick={() => setMerging(s)}>
+                            합치기
+                          </button>
+                        )}
                         <button className="ghost" style={{ padding: '4px 12px' }} disabled={busy} onClick={() => void toggleActive(s.row)}>
                           {isActive ? '중지' : '사용'}
                         </button>
@@ -227,6 +236,22 @@ export function Income({ workbook, ctx, today, onChanged }: { workbook: Workbook
           1회 금액과 기준 급여일은 더보기 › 설정 › 급여 에서 바꿉니다. 변동 수입은 건별로 기록하면 여기 합산됩니다.
         </p>
       </Card>
+
+      {merging && (
+        <MergeSheet
+          from={merging}
+          candidates={plan.sources.filter((o) => o.id !== merging.id && o.kind !== 'fixed')}
+          workbook={workbook}
+          ctx={ctx}
+          onClose={() => setMerging(null)}
+          onError={setError}
+          onDone={(undoStep) => {
+            setMerging(null)
+            setUndoConfirm(undoStep)
+            onChanged()
+          }}
+        />
+      )}
 
       {confirming && (
         <PaydayConfirmSheet
@@ -383,7 +408,7 @@ function PaydayConfirmSheet({
     }
     const fx = configNumber(workbook.config, 'fx_usd_krw', 1332)
     const amountUsd = currency === 'KRW' ? Math.round((value / fx) * 100) / 100 : value
-    const label = `${source.name} ${date.slice(5)} ${formatUsd(amountUsd)}`
+    const label = `${source.name} ${date.slice(5)} ${formatUsd(amountUsd)} 확정했습니다.`
     setBusy(true)
     try {
       const target = slot.row
@@ -463,6 +488,94 @@ function PaydayConfirmSheet({
       <div className="actions">
         <button className="primary" onClick={() => void save()} disabled={busy}>
           확정
+        </button>
+        <button className="ghost" onClick={onClose} disabled={busy}>
+          취소
+        </button>
+      </div>
+    </Sheet>
+  )
+}
+
+/**
+ * 같은 수입원이 둘로 나뉘어 있을 때(예: "레슨" 과 "영주 레슨") 하나로 합친다.
+ * 선택한 쪽(from)의 기록·가맹점 사전을 대상(to)으로 옮기고 from 은 중지한다. 기록은 지우지 않는다.
+ * 옮긴 칸의 원래 값을 들고 있어 바로 되돌릴 수 있다.
+ */
+function MergeSheet({
+  from,
+  candidates,
+  workbook,
+  ctx,
+  onClose,
+  onError,
+  onDone,
+}: {
+  from: RecurringActual
+  candidates: RecurringActual[]
+  workbook: Workbook
+  ctx: SheetsContext
+  onClose: () => void
+  onError: (m: string) => void
+  onDone: (undo: { label: string; run: () => Promise<void> }) => void
+}) {
+  const [targetId, setTargetId] = useState(candidates[0]?.id ?? '')
+  const [busy, setBusy] = useState(false)
+  const target = candidates.find((c) => c.id === targetId) ?? null
+  const preview = target ? planSourceMerge(workbook, from.row, target.row) : null
+
+  async function run() {
+    if (!target || !preview) return
+    setBusy(true)
+    try {
+      const wasActive = String(from.row.active).trim().toUpperCase() !== 'N'
+      const note = String(from.row.notes ?? '').trim()
+      await writeMergeEdits(ctx, preview.edits)
+      await patchIn(ctx, workbook, TABS.recurring, from.row, {
+        active: 'N',
+        notes: `${note ? `${note} · ` : ''}${target.name} 로 합침`,
+      })
+      onDone({
+        label: `${from.name} 을(를) ${target.name} 로 합쳤습니다(기록 ${preview.transactions}건).`,
+        run: async () => {
+          await writeMergeEdits(ctx, preview.edits, true)
+          await patchIn(ctx, workbook, TABS.recurring, { ...from.row, active: 'N', notes: `${note ? `${note} · ` : ''}${target.name} 로 합침` }, {
+            active: wasActive ? 'Y' : 'N',
+            notes: note,
+          })
+        },
+      })
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err))
+      onClose()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Sheet title={`${from.name} 합치기`} onClose={onClose}>
+      <p className="meta" style={{ marginTop: 0 }}>
+        "{from.name}" 의 기록을 아래 수입원으로 옮기고 "{from.name}" 은 중지합니다. 기록은 지워지지 않고, 합친 직후 되돌릴 수 있습니다.
+      </p>
+      <Field label="합칠 곳 (남길 수입원)">
+        <select value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+          {candidates.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {preview && (
+        <p className="meta">
+          옮길 원장 기록 {preview.transactions}건{preview.merchants > 0 && `, 가맹점 사전 ${preview.merchants}건`}
+          {preview.transactions === 0 && ' (옮길 기록이 없어도 수입원만 중지됩니다)'}
+        </p>
+      )}
+      <div className="actions">
+        <button className="primary" onClick={() => void run()} disabled={busy || !target}>
+          합치기
         </button>
         <button className="ghost" onClick={onClose} disabled={busy}>
           취소

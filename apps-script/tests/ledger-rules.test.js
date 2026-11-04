@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   pickConfirmTarget, matchRecurringName, undoPlan, nextMonthBudgets, budgetDuplicateRows, amortizeOnce, payoffMonths, monthScore,
-  parseAmountRule, biweeklyPaydays, expectedAmountFor, matchPaydaySlots, biweeklyRuleString
+  parseAmountRule, biweeklyPaydays, expectedAmountFor, matchPaydaySlots, biweeklyRuleString, sourceMergePlan
 } = require('../src/LedgerRules.js');
 
 test('확정 대상은 expected 행뿐이다. confirmed 는 덮어쓰지 않는다', () => {
@@ -164,6 +164,43 @@ test('급여일 짝짓기: 가까운 급여일에 하나씩, 7일 넘게 먼 행
   assert.equal(r.slots[0].row.id, 'c');
   assert.equal(r.slots[1].row, null); // 11-06 짜리 두 번째 행은 14일 떨어진 20일에 붙지 않는다
   assert.deepEqual(r.extras.map((x) => x.id).sort(), ['b', 'd']);
+});
+
+test('수입원 합치기: recurring_id 가 같거나 recurring_id 없이 같은 category 인 기록만 옮긴다', () => {
+  const from = { id: 'I03', category: '영주 레슨' };
+  const to = { id: 'I02', category: '레슨' };
+  const tx = [
+    { recurring_id: 'I03', category: '영주 레슨', type: 'income', status: 'active' }, // 0 옮김(둘 다)
+    { recurring_id: '', category: '영주 레슨', type: 'income', status: 'active' },    // 1 옮김(category 만)
+    { recurring_id: 'I03', category: '영주 레슨', type: 'income', status: 'deleted' }, // 2 삭제된 건 그대로
+    { recurring_id: 'I02', category: '레슨', type: 'income', status: 'active' },       // 3 이미 to
+    { recurring_id: '', category: '영주 레슨', type: 'expense', status: 'active' },    // 4 지출은 안 건드림
+    { recurring_id: 'R01', category: '영주 레슨', type: 'income', status: 'active' },   // 5 다른 항목 소속
+  ];
+  const mer = [
+    { keyword: '영주 레슨', type: 'income', category: '영주 레슨', recurring_id: '' },   // 0 category 만
+    { keyword: '영주', type: 'income', category: '영주 레슨', recurring_id: 'I03' },     // 1 둘 다
+    { keyword: '코스트코', type: 'expense', category: '식료품', recurring_id: '' },       // 2 무관
+  ];
+  const plan = sourceMergePlan(from, to, tx, mer);
+  assert.deepEqual(JSON.parse(JSON.stringify(plan)), {
+    transactions: [
+      { index: 0, patch: { recurring_id: 'I02', category: '레슨' } },
+      { index: 1, patch: { category: '레슨' } },
+    ],
+    merchants: [
+      { index: 0, patch: { category: '레슨' } },
+      { index: 1, patch: { recurring_id: 'I02', category: '레슨' } },
+    ],
+  });
+
+  // 같은 category 면 category 로 묶인 기록은 옮기지 않는다(옮기면 recurring_id 없는 다른 기록까지 끌려간다)
+  const same = sourceMergePlan({ id: 'I03', category: '레슨' }, to, [{ recurring_id: '', category: '레슨', type: 'income', status: 'active' }, { recurring_id: 'I03', category: '레슨', type: 'income', status: 'active' }], []);
+  assert.deepEqual(JSON.parse(JSON.stringify(same.transactions)), [{ index: 1, patch: { recurring_id: 'I02', category: '레슨' } }]);
+
+  // 자기 자신·빈 id 는 아무것도 하지 않는다
+  assert.equal(sourceMergePlan(to, to, tx, mer).transactions.length, 0);
+  assert.equal(sourceMergePlan({ id: '', category: 'x' }, to, tx, mer).transactions.length, 0);
 });
 
 test('2주급 규칙 문자열', () => {

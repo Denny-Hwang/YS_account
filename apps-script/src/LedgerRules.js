@@ -190,6 +190,61 @@ function matchPaydaySlots(paydays, rows) {
   return { slots: slots, extras: extras };
 }
 
+/**
+ * 같은 수입원이 둘로 나뉘어 등록됐을 때, from 의 기록을 to 로 옮기는 계획을 세운다(건별 수입원, kind=variable 용).
+ *
+ * 건별 수입원은 recurring_id 가 같거나, recurring_id 없이 같은 category 인 수입 기록을 모아 보여 준다.
+ * 그래서 from 에 속한 기록은 두 종류다. 둘 다 recurring_id·category 를 to 의 것으로 바꾼다.
+ * 삭제된 기록은 건드리지 않는다. 기록을 지우거나 합치지 않고 두 열만 고친다(원장은 append-only).
+ * 가맹점 사전(Merchants)도 같은 기준으로 옮겨야 다음 입력이 다시 from 으로 가지 않는다.
+ * @param {!Object} from Recurring 행 {id, category}
+ * @param {!Object} to Recurring 행 {id, category}
+ * @param {!Array<!Object>} transactions 원장 행
+ * @param {!Array<!Object>} merchants 가맹점 사전 행
+ * @return {{transactions: !Array<{index: number, patch: !Object}>, merchants: !Array<{index: number, patch: !Object}>}}
+ *   index 는 넘겨 준 배열에서의 위치
+ */
+function sourceMergePlan(from, to, transactions, merchants) {
+  var fromId = String(from.id || '').trim();
+  var fromCategory = String(from.category || '').trim();
+  var toId = String(to.id || '').trim();
+  var toCategory = String(to.category || '').trim();
+  var out = { transactions: [], merchants: [] };
+  if (!fromId || !toId || fromId === toId) {
+    return out;
+  }
+  // 두 수입원이 같은 category 면 category 로 묶인 기록은 이미 양쪽에 다 잡혀 있다. 옮길 필요가 없다.
+  var byCategory = fromCategory !== '' && fromCategory !== toCategory;
+
+  function patchFor(row, isIncome) {
+    var rid = String(row.recurring_id || '').trim();
+    if (rid === fromId) {
+      return { recurring_id: toId, category: toCategory };
+    }
+    if (byCategory && isIncome && rid === '' && String(row.category || '').trim() === fromCategory) {
+      return { category: toCategory };
+    }
+    return null;
+  }
+
+  (transactions || []).forEach(function (row, index) {
+    if (String(row.status || '').trim() === 'deleted') {
+      return;
+    }
+    var patch = patchFor(row, String(row.type || '').trim() === 'income');
+    if (patch) {
+      out.transactions.push({ index: index, patch: patch });
+    }
+  });
+  (merchants || []).forEach(function (row, index) {
+    var patch = patchFor(row, String(row.type || '').trim() === 'income');
+    if (patch) {
+      out.merchants.push({ index: index, patch: patch });
+    }
+  });
+  return out;
+}
+
 /** 2주급 규칙 문자열을 만든다. 금액은 소수 둘째 자리까지. 기준일이 날짜가 아니면 빈 문자열. */
 function biweeklyRuleString(perCheck, anchor) {
   var amount = rulesRound(perCheck);
@@ -454,6 +509,7 @@ if (typeof module !== 'undefined') {
     biweeklyPaydays: biweeklyPaydays,
     matchPaydaySlots: matchPaydaySlots,
     biweeklyRuleString: biweeklyRuleString,
+    sourceMergePlan: sourceMergePlan,
     expectedAmountFor: expectedAmountFor,
     pickConfirmTarget: pickConfirmTarget,
     recurringCertainty: recurringCertainty,
