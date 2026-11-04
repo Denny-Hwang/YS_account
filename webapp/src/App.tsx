@@ -8,6 +8,7 @@ import { Budgets } from './screens/Budgets'
 import { Assets, Debts, Goals } from './screens/Holdings'
 import { Income } from './screens/Income'
 import { LedgerScreen } from './screens/LedgerScreen'
+import { Period } from './screens/Period'
 import { RecurringScreen } from './screens/RecurringScreen'
 import { Report } from './screens/Report'
 import { Setup } from './screens/Setup'
@@ -19,6 +20,7 @@ type Screen =
   | 'budgets'
   | 'income'
   | 'report'
+  | 'period'
   | 'more'
   | 'recurring'
   | 'debts'
@@ -32,6 +34,7 @@ const TITLES: Record<Screen, string> = {
   budgets: '예산',
   income: '수입',
   report: '리포트',
+  period: '기간',
   more: '더보기',
   recurring: '고정비',
   debts: '부채',
@@ -59,6 +62,7 @@ function clock(ts: number): string {
 }
 
 const MORE_ITEMS: Array<{ id: Screen; label: string; hint: string }> = [
+  { id: 'period', label: '기간', hint: '기간을 골라 수입·지출 합계, 수입원·카테고리별, 거래 목록' },
   { id: 'recurring', label: '고정비', hint: '정기 항목의 예상 금액과 이번 달 확정 여부' },
   { id: 'debts', label: '부채', hint: '남은 원금과 월 상환액' },
   { id: 'assets', label: '자산', hint: '계좌 잔액·주식·연금·401k·HSA 종류별 스냅샷' },
@@ -283,7 +287,8 @@ export function App() {
       {ready && screen === 'income' && (
         <Income workbook={workbook} ctx={ctx} today={today} onChanged={reload} />
       )}
-      {ready && screen === 'report' && <Report workbook={workbook} today={today} />}
+      {ready && screen === 'report' && <Report workbook={workbook} today={today} onOpenPeriod={() => setScreen('period')} />}
+      {ready && screen === 'period' && <Period workbook={workbook} ctx={ctx} today={today} onChanged={reload} />}
       {ready && screen === 'recurring' && (
         <RecurringScreen workbook={workbook} ctx={ctx} today={today} onChanged={reload} />
       )}

@@ -153,12 +153,15 @@ export function MonthlyBars({
   selected,
   onSelect,
   height = 140,
+  axisEvery = 1,
 }: {
   months: string[]
   series: Array<{ label: string; values: number[]; tone: Tone }>
   selected?: string
   onSelect?: (m: string) => void
   height?: number
+  /** 달이 많을 때 축 글자를 n 개에 하나만 쓴다. 1 이면 모두. */
+  axisEvery?: number
 }) {
   const peak = Math.max(1, ...series.flatMap((s) => s.values))
   return (
@@ -179,7 +182,7 @@ export function MonthlyBars({
           </button>
         ))}
       </div>
-      <Axis months={months} />
+      <Axis months={months} every={axisEvery} />
     </>
   )
 }
@@ -389,11 +392,15 @@ export function SmallMultiples({
   )
 }
 
-function Axis({ months }: { months: string[] }) {
+function Axis({ months, every = 1 }: { months: string[]; every?: number }) {
+  // 성기게 쓸 때는 해가 헷갈리지 않게 '26-09' 로 적는다.
+  const label = (m: string) => (m.length !== 7 ? m : every > 1 ? m.slice(2) : m.slice(5))
   return (
     <div className="bars-axis">
-      {months.map((m) => (
-        <span key={m}>{m.length === 7 ? m.slice(5) : m}</span>
+      {months.map((m, i) => (
+        <span key={m} style={every > 1 ? { whiteSpace: 'nowrap', textAlign: 'left', overflow: 'visible' } : undefined}>
+          {i % every === 0 ? label(m) : ''}
+        </span>
       ))}
     </div>
   )

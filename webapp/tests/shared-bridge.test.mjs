@@ -108,6 +108,19 @@ test('급여일 짝짓기와 2주급 규칙 문자열도 웹앱에서 같은 값
   assert.equal(rules.biweeklyRuleString(3000, '2026-11-06'), 'biweekly:3000@2026-11-06')
 })
 
+test('기간 요약도 웹앱에서 같은 값: 실제만 세고 수입원에 안 묶이면 기타', async () => {
+  const rules = await loadShared('LedgerRules.js')
+  const rows = [
+    { date: '2026-10-06', type: 'income', amount_usd: 100, status: 'confirmed', recurring_id: 'I01', category: '급여' },
+    { date: '2026-10-07', type: 'income', amount_usd: 7, status: 'active', recurring_id: '', category: '용돈' },
+    { date: '2026-10-20', type: 'income', amount_usd: 100, status: 'expected', recurring_id: 'I01', category: '급여' },
+  ]
+  const r = rules.periodReport(rows, [{ id: 'I01', name: '급여', kind: 'fixed', category: '급여' }], '2026-10-01', '2026-10-31', '2026-10')
+  assert.equal(r.income, 107)
+  assert.deepEqual(r.incomeGroups.map((g) => g.name), ['급여', '기타'])
+  assert.equal(r.pending.count, 1)
+})
+
 test('수입원 합치기 계획도 웹앱에서 같은 값', async () => {
   const rules = await loadShared('LedgerRules.js')
   const plan = rules.sourceMergePlan(

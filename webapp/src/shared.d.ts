@@ -106,6 +106,31 @@ declare module '@shared/LedgerRules.js' {
     transactions: Array<{ index: number; patch: Record<string, string> }>
     merchants: Array<{ index: number; patch: Record<string, string> }>
   }
+  export interface PeriodReport {
+    from: string
+    to: string
+    months: string[]
+    /** 월평균을 셀 때 쓰는 달 수(아직 안 온 달 제외, 최소 1) */
+    elapsedMonths: number
+    income: number
+    expense: number
+    net: number
+    monthly: Array<{ month: string; income: number; expense: number; net: number }>
+    incomeGroups: Array<{ name: string; value: number; count: number }>
+    expenseGroups: Array<{ name: string; value: number; count: number }>
+    /** 기간 안의 실제 기록(최신순). index 는 넘긴 transactions 배열의 위치 */
+    items: Array<{ index: number; date: string; type: string; group: string; amount: number }>
+    /** 기간 안의 예정·선반영 기록. 수입·지출에 넣지 않았다 */
+    pending: { count: number; income: number; expense: number }
+  }
+  /** 기간(양끝 포함)의 실제 수입·지출 요약. 예정·선반영·삭제·저축 이동은 세지 않는다. */
+  export function periodReport(
+    transactions: Array<Record<string, unknown>>,
+    sources: Array<Record<string, unknown>>,
+    from: string,
+    to: string,
+    todayMonth: string
+  ): PeriodReport
   /** 'biweekly:<금액>@<기준일>'. 값이 틀리면 빈 문자열. */
   export function biweeklyRuleString(perCheck: number, anchor: string): string
   export function expectedAmountFor(
