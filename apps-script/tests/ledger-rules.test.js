@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   pickConfirmTarget, matchRecurringName, undoPlan, nextMonthBudgets, budgetDuplicateRows, amortizeOnce, payoffMonths, monthScore,
-  parseAmountRule, biweeklyPaydays, expectedAmountFor, matchPaydaySlots, biweeklyRuleString, sourceMergePlan
+  parseAmountRule, biweeklyPaydays, expectedAmountFor, matchPaydaySlots, biweeklyRuleString, sourceMergePlan, periodReport
 } = require('../src/LedgerRules.js');
 
 test('확정 대상은 expected 행뿐이다. confirmed 는 덮어쓰지 않는다', () => {
@@ -201,6 +201,78 @@ test('수입원 합치기: recurring_id 가 같거나 recurring_id 없이 같은
   // 자기 자신·빈 id 는 아무것도 하지 않는다
   assert.equal(sourceMergePlan(to, to, tx, mer).transactions.length, 0);
   assert.equal(sourceMergePlan({ id: '', category: 'x' }, to, tx, mer).transactions.length, 0);
+});
+
+const PERIOD_SOURCES = [
+  { id: 'I01', name: '급여', kind: 'fixed', category: '급여' },
+  { id: 'I02', name: '레슨', kind: 'variable', category: '레슨' },
+  { id: 'I03', name: '옛 수입원', kind: 'variable', category: '옛' }, // 중지된 수입원도 이름을 알려 준다
+];
+const tx = (date, type, amount, extra) => Object.assign({ date, type, amount_usd: amount, status: 'active', recurring_id: '', category: '' }, extra);
+
+test('기간 요약: 실제 기록만 세고 예정·선반영·삭제·저축 이동은 뺀다', () => {
+  const rows = [
+    tx('2026-10-06', 'income', 3000, { recurring_id: 'I01', status: 'confirmed', category: '급여' }),
+    tx('2026-10-20', 'income', 3000, { recurring_id: 'I01', status: 'expected', category: '급여' }),      // 예정: 제외
+    tx('2026-10-10', 'expense', 2100, { status: 'committed', category: '주거비' }),                       // 선반영: 제외
+    tx('2026-10-11', 'expense', 80.5, { category: '식료품' }),
+    tx('2026-10-12', 'expense', 10, { status: 'deleted', category: '식료품' }),                           // 삭제: 제외
+    tx('2026-10-13', 'transfer', 300, { category: '저축' }),                                              // 저축 이동: 제외
+    tx('2026-09-30', 'expense', 999, { category: '식료품' }),                                             // 기간 밖
+    tx('2026-11-01', 'expense', 999, { category: '식료품' }),                                             // 기간 밖
+  ];
+  const r = periodReport(rows, PERIOD_SOURCES, '2026-10-01', '2026-10-31', '2026-11');
+  assert.equal(r.income, 3000);
+  assert.equal(r.expense, 80.5);
+  assert.equal(r.net, 2919.5);
+  assert.deepEqual(JSON.parse(JSON.stringify(r.pending)), { count: 2, income: 3000, expense: 2100 });
+  assert.equal(r.items.length, 2);
+});
+
+test('기간 요약: 수입원에 안 묶인 수입은 기타, 건별 수입원은 category 로 묶는다', () => {
+  const rows = [
+    tx('2026-10-06', 'income', 3000, { recurring_id: 'I01', category: '급여' }),
+    tx('2026-10-07', 'income', 40, { category: '레슨' }),                       // recurring_id 없이 category 일치 → 레슨
+    tx('2026-10-08', 'income', 60, { recurring_id: 'I02', category: '레슨' }),  // 레슨
+    tx('2026-10-09', 'income', 25, { recurring_id: 'I03', category: '옛' }),    // 중지된 수입원 이름
+    tx('2026-10-10', 'income', 15, { category: '용돈' }),                       // 어디에도 안 맞음 → 기타
+    tx('2026-10-11', 'income', 5, { recurring_id: 'I99', category: '레슨' }),   // 모르는 수입원 id → 기타
+    tx('2026-10-12', 'income', 1000, {}),                                       // 분류 없음 → 기타
+  ];
+  const r = periodReport(rows, PERIOD_SOURCES, '2026-10-01', '2026-10-31', '2026-10');
+  assert.deepEqual(JSON.parse(JSON.stringify(r.incomeGroups)), [
+    { name: '급여', value: 3000, count: 1 },
+    { name: '레슨', value: 100, count: 2 },
+    { name: '옛 수입원', value: 25, count: 1 },
+    { name: '기타', value: 1020, count: 3 }, // 값이 가장 커도 기타는 맨 아래
+  ]);
+});
+
+test('기간 요약: 월별 합계와 월평균에 쓰는 달 수(아직 안 온 달 제외)', () => {
+  const rows = [
+    tx('2026-09-15', 'income', 100, {}),
+    tx('2026-09-20', 'expense', 40, { category: '식료품' }),
+    tx('2026-11-03', 'expense', 60, { category: '식료품' }),
+    tx('2026-11-04', 'expense', 10, {}),
+  ];
+  const r = periodReport(rows, PERIOD_SOURCES, '2026-09-01', '2026-12-31', '2026-11');
+  assert.deepEqual(Array.from(r.months), ['2026-09', '2026-10', '2026-11', '2026-12']);
+  assert.equal(r.elapsedMonths, 3); // 12월은 아직 안 왔다
+  assert.deepEqual(JSON.parse(JSON.stringify(r.monthly.map((m) => [m.month, m.income, m.expense, m.net]))), [
+    ['2026-09', 100, 40, 60], ['2026-10', 0, 0, 0], ['2026-11', 0, 70, -70], ['2026-12', 0, 0, 0],
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(r.expenseGroups.map((g) => [g.name, g.value]))), [['식료품', 100], ['(분류 없음)', 10]]);
+  // 최신 기록이 먼저
+  assert.deepEqual(r.items.map((i) => i.date), ['2026-11-04', '2026-11-03', '2026-09-20', '2026-09-15']);
+});
+
+test('기간 요약: 경계 날짜는 양끝 포함, 잘못된 기간은 비어 있다', () => {
+  const rows = [tx('2026-10-01', 'expense', 1, {}), tx('2026-10-31', 'expense', 2, {})];
+  assert.equal(periodReport(rows, [], '2026-10-01', '2026-10-31', '2026-10').expense, 3);
+  const bad = periodReport(rows, [], '2026-12-01', '2026-10-01', '2026-10');
+  assert.equal(bad.expense, 0);
+  assert.equal(bad.months.length, 0);
+  assert.equal(bad.elapsedMonths, 1);
 });
 
 test('2주급 규칙 문자열', () => {

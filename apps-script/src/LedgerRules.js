@@ -245,6 +245,156 @@ function sourceMergePlan(from, to, transactions, merchants) {
   return out;
 }
 
+/** 'YYYY-MM' 부터 'YYYY-MM' 까지 달 목록(양끝 포함). 형식이 틀리거나 거꾸로면 빈 배열. 최대 240개월. */
+function rulesMonthList(fromMonth, toMonth) {
+  var a = /^(\d{4})-(\d{2})$/.exec(String(fromMonth || ''));
+  var b = /^(\d{4})-(\d{2})$/.exec(String(toMonth || ''));
+  if (!a || !b) {
+    return [];
+  }
+  var y = Number(a[1]);
+  var m = Number(a[2]);
+  var endIndex = Number(b[1]) * 12 + Number(b[2]);
+  var out = [];
+  while (y * 12 + m <= endIndex && out.length < 240) {
+    out.push(y + '-' + (m < 10 ? '0' + m : m));
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * 기간(from~to, 양끝 포함)의 수입·지출 요약. 웹앱 "기간" 화면이 쓴다.
+ *
+ * 세는 것:
+ *   - 실제로 일어난 기록만 센다(status 가 active 또는 confirmed). 예정(expected)·선반영(committed)은 아직
+ *     들어오거나 나가지 않은 돈이라 빼고, 건수·금액을 pending 으로만 알려 준다. deleted 는 없는 것이다.
+ *   - type 이 income 또는 expense 인 기록만. transfer(저축 이동)는 수입도 지출도 아니다.
+ *   - 금액은 amount_usd.
+ * 수입 묶음: recurring_id 가 수입원이면 그 수입원 이름. recurring_id 없이 kind=variable 수입원과 category 가 같으면 그 수입원
+ *   (수입 탭과 같은 기준). 어디에도 안 맞으면 '기타'.
+ * 지출 묶음: category, 없으면 '(분류 없음)'.
+ *
+ * @param {!Array<!Object>} transactions 원장 행. date 는 'YYYY-MM-DD' 로 시작하는 문자열
+ * @param {!Array<!Object>} sources 수입원 Recurring 행(중지된 것 포함). {id, name, kind, category}
+ * @param {string} from 'YYYY-MM-DD'
+ * @param {string} to 'YYYY-MM-DD'
+ * @param {string} todayMonth 'YYYY-MM'. 월평균을 셀 때 아직 안 온 달은 센 달에서 뺀다
+ * @return {{from: string, to: string, months: !Array<string>, elapsedMonths: number, income: number, expense: number, net: number,
+ *   monthly: !Array<{month: string, income: number, expense: number, net: number}>,
+ *   incomeGroups: !Array<{name: string, value: number, count: number}>,
+ *   expenseGroups: !Array<{name: string, value: number, count: number}>,
+ *   items: !Array<{index: number, date: string, type: string, group: string, amount: number}>,
+ *   pending: {count: number, income: number, expense: number}}}
+ */
+function periodReport(transactions, sources, from, to, todayMonth) {
+  var fromDay = String(from || '').slice(0, 10);
+  var toDay = String(to || '').slice(0, 10);
+  var months = rulesMonthList(fromDay.slice(0, 7), toDay.slice(0, 7));
+  var monthly = {};
+  months.forEach(function (m) {
+    monthly[m] = { month: m, income: 0, expense: 0, net: 0 };
+  });
+
+  var byId = {};
+  var variableByCategory = {};
+  (sources || []).forEach(function (s) {
+    var id = String(s.id || '').trim();
+    if (id) {
+      byId[id] = String(s.name || id).trim() || id;
+    }
+    var category = String(s.category || '').trim();
+    if (id && category && String(s.kind || 'fixed').trim() !== 'fixed' && !variableByCategory[category]) {
+      variableByCategory[category] = String(s.name || id).trim() || id;
+    }
+  });
+
+  var groups = { income: {}, expense: {} };
+  var items = [];
+  var pending = { count: 0, income: 0, expense: 0 };
+  var income = 0;
+  var expense = 0;
+
+  (transactions || []).forEach(function (row, index) {
+    var type = String(row.type || '').trim();
+    if (type !== 'income' && type !== 'expense') {
+      return;
+    }
+    var date = String(row.date || '').slice(0, 10);
+    if (!date || date < fromDay || date > toDay) {
+      return;
+    }
+    var status = String(row.status || '').trim();
+    var amount = Number(row.amount_usd) || 0;
+    if (isReservedStatus(status)) {
+      pending.count += 1;
+      pending[type] += amount;
+      return;
+    }
+    if (status !== 'active' && status !== 'confirmed') {
+      return;
+    }
+
+    var group;
+    if (type === 'income') {
+      var rid = String(row.recurring_id || '').trim();
+      var category = String(row.category || '').trim();
+      group = (rid && byId[rid]) || (rid === '' && variableByCategory[category]) || '기타';
+    } else {
+      group = String(row.category || '').trim() || '(분류 없음)';
+    }
+    var bucket = groups[type][group] || (groups[type][group] = { name: group, value: 0, count: 0 });
+    bucket.value += amount;
+    bucket.count += 1;
+    if (type === 'income') {
+      income += amount;
+    } else {
+      expense += amount;
+    }
+    var month = monthly[date.slice(0, 7)];
+    if (month) {
+      month[type] += amount;
+    }
+    items.push({ index: index, date: date, type: type, group: group, amount: rulesRound(amount) });
+  });
+
+  function list(map) {
+    return Object.keys(map)
+      .map(function (k) { return { name: map[k].name, value: rulesRound(map[k].value), count: map[k].count }; })
+      // 큰 것부터. '기타' 는 값이 커도 맨 아래로 보낸다(이름 있는 항목이 먼저 보이게).
+      .sort(function (a, b) {
+        if ((a.name === '기타') !== (b.name === '기타')) {
+          return a.name === '기타' ? 1 : -1;
+        }
+        return b.value - a.value || (a.name < b.name ? -1 : 1);
+      });
+  }
+
+  items.sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : b.index - a.index; });
+  var elapsed = months.filter(function (m) { return m <= String(todayMonth || ''); }).length;
+  return {
+    from: fromDay,
+    to: toDay,
+    months: months,
+    elapsedMonths: Math.max(1, elapsed),
+    income: rulesRound(income),
+    expense: rulesRound(expense),
+    net: rulesRound(income - expense),
+    monthly: months.map(function (m) {
+      var b = monthly[m];
+      return { month: m, income: rulesRound(b.income), expense: rulesRound(b.expense), net: rulesRound(b.income - b.expense) };
+    }),
+    incomeGroups: list(groups.income),
+    expenseGroups: list(groups.expense),
+    items: items,
+    pending: { count: pending.count, income: rulesRound(pending.income), expense: rulesRound(pending.expense) }
+  };
+}
+
 /** 2주급 규칙 문자열을 만든다. 금액은 소수 둘째 자리까지. 기준일이 날짜가 아니면 빈 문자열. */
 function biweeklyRuleString(perCheck, anchor) {
   var amount = rulesRound(perCheck);
@@ -510,6 +660,7 @@ if (typeof module !== 'undefined') {
     matchPaydaySlots: matchPaydaySlots,
     biweeklyRuleString: biweeklyRuleString,
     sourceMergePlan: sourceMergePlan,
+    periodReport: periodReport,
     expectedAmountFor: expectedAmountFor,
     pickConfirmTarget: pickConfirmTarget,
     recurringCertainty: recurringCertainty,

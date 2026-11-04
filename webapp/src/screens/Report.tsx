@@ -5,7 +5,7 @@ import { Card, Empty } from '../components/Ui'
 import { configList, latestAssetsTotal, monthsBack, type Workbook } from '../lib/ledger'
 import { averageNet, categoryBreakdown, cumulativePace, envelopeMonthly, envelopeSummary, monthlyTotals, topMerchants } from '../lib/metrics'
 
-export function Report({ workbook, today }: { workbook: Workbook; today: string }) {
+export function Report({ workbook, today, onOpenPeriod }: { workbook: Workbook; today: string; onOpenPeriod?: () => void }) {
   const thisMonth = today.slice(0, 7)
   const [selected, setSelected] = useState(thisMonth)
   const [asTable, setAsTable] = useState(false)
@@ -38,7 +38,10 @@ export function Report({ workbook, today }: { workbook: Workbook; today: string 
       <Card>
         <div className="row" style={{ marginBottom: 12 }}>
           <span className="meta">{selected} 기준 · 아래 막대를 누르면 달이 바뀝니다</span>
-          <button className="ghost" onClick={() => setAsTable((v) => !v)}>{asTable ? '그래프로' : '표로'}</button>
+          <span className="row" style={{ gap: 6 }}>
+            {onOpenPeriod && <button className="ghost" onClick={onOpenPeriod}>기간별 ›</button>}
+            <button className="ghost" onClick={() => setAsTable((v) => !v)}>{asTable ? '그래프로' : '표로'}</button>
+          </span>
         </div>
         <div className="stat-row">
           <Stat label="이달 순저축" value={formatUsd(current.net)} tone={current.net < 0 ? 'bad' : 'good'} sub={savingRate !== null ? `저축률 ${savingRate}%` : '수입 기록 없음'} />
