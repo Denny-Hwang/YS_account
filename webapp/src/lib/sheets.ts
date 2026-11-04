@@ -166,3 +166,25 @@ export async function updateCells(
     body: JSON.stringify({ valueInputOption: 'RAW', data }),
   })
 }
+
+/**
+ * 여러 행의 셀을 한 번에 쓴다(수입원 합치기처럼 많은 행의 같은 열을 고칠 때).
+ * 한 요청에 너무 많은 범위를 넣지 않도록 나눠서 보낸다. 행을 지우지 않는다.
+ */
+export async function updateManyCells(
+  ctx: SheetsContext,
+  name: string,
+  edits: Array<{ row: number; col: number; value: string | number }>
+): Promise<void> {
+  const CHUNK = 200
+  for (let i = 0; i < edits.length; i += CHUNK) {
+    const data = edits.slice(i, i + CHUNK).map((e) => ({
+      range: `'${name}'!${columnLetter(e.col)}${e.row}`,
+      values: [[e.value]],
+    }))
+    await request(ctx, `/values:batchUpdate`, {
+      method: 'POST',
+      body: JSON.stringify({ valueInputOption: 'RAW', data }),
+    })
+  }
+}

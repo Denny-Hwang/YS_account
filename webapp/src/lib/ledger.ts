@@ -4,9 +4,9 @@
  */
 
 import { isSpentStatus, isSettledStatus } from '@shared/Budget.js'
-import { isReservedStatus, pickConfirmTarget } from '@shared/LedgerRules.js'
+import { isReservedStatus, pickConfirmTarget, sourceMergePlan } from '@shared/LedgerRules.js'
 import type { ParsedMessage } from '@shared/Parser.js'
-import { appendManyValues, appendValues, clearRows, readTabs, updateCells, type SheetsContext, type Table } from './sheets'
+import { appendManyValues, appendValues, clearRows, readTabs, updateCells, updateManyCells, type SheetsContext, type Table } from './sheets'
 
 export const TABS = {
   transactions: 'Transactions',
@@ -545,4 +545,46 @@ export async function recordParsed(
     envelope,
     nth: 0,
   }
+}
+
+export interface MergeEdit {
+  tab: string
+  row: number
+  col: number
+  value: string
+  /** 되돌릴 때 쓸 원래 값 */
+  before: string
+}
+
+/** 합치기 계획. 건수는 미리 보여 주고, edits 는 그대로 시트에 쓴다. */
+export function planSourceMerge(workbook: Workbook, from: SheetRow, to: SheetRow) {
+  const plan = sourceMergePlan(from, to, workbook.transactions, workbook.merchants)
+  const edits: MergeEdit[] = []
+  const add = (tab: string, rows: SheetRow[], items: Array<{ index: number; patch: Record<string, string> }>) => {
+    const headers = workbook.tables[tab]?.headers ?? []
+    items.forEach(({ index, patch }) => {
+      const row = rows[index]
+      Object.entries(patch).forEach(([key, value]) => {
+        const col = headers.indexOf(key)
+        if (col < 0) return
+        const before = String(row[key] ?? '')
+        if (before === value) return
+        edits.push({ tab, row: row._row, col, value, before })
+      })
+    })
+  }
+  add(TABS.transactions, workbook.transactions, plan.transactions)
+  add(TABS.merchants, workbook.merchants, plan.merchants)
+  return { edits, transactions: plan.transactions.length, merchants: plan.merchants.length }
+}
+
+/** 계획을 시트에 쓴다. tab 별로 묶어 한 번에 보낸다. */
+export async function writeMergeEdits(ctx: SheetsContext, edits: MergeEdit[], reverse = false): Promise<void> {
+  const byTab = new Map<string, Array<{ row: number; col: number; value: string }>>()
+  edits.forEach((e) => {
+    const list = byTab.get(e.tab) ?? []
+    list.push({ row: e.row, col: e.col, value: reverse ? e.before : e.value })
+    byTab.set(e.tab, list)
+  })
+  for (const [tab, list] of byTab) await updateManyCells(ctx, tab, list)
 }
