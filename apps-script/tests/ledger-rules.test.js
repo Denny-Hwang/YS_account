@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   pickConfirmTarget, matchRecurringName, undoPlan, nextMonthBudgets, budgetDuplicateRows, amortizeOnce, payoffMonths, monthScore,
-  parseAmountRule, biweeklyPaydays, expectedAmountFor, matchPaydaySlots, biweeklyRuleString, sourceMergePlan, periodReport
+  parseAmountRule, biweeklyPaydays, expectedAmountFor, matchPaydaySlots, biweeklyRuleString, sourceMergePlan, periodReport, weekdayLabel
 } = require('../src/LedgerRules.js');
 
 test('확정 대상은 expected 행뿐이다. confirmed 는 덮어쓰지 않는다', () => {
@@ -273,6 +273,17 @@ test('기간 요약: 경계 날짜는 양끝 포함, 잘못된 기간은 비어 
   assert.equal(bad.expense, 0);
   assert.equal(bad.months.length, 0);
   assert.equal(bad.elapsedMonths, 1);
+});
+
+test('요일: 격주 금요일 급여는 11-06·11-20 이 금요일, 하루 뒤는 토요일', () => {
+  assert.equal(weekdayLabel('2026-11-06'), '금');
+  assert.equal(weekdayLabel('2026-11-20'), '금');
+  assert.equal(weekdayLabel('2026-11-07'), '토');
+  assert.equal(weekdayLabel('1970-01-01'), '목');
+  assert.equal(weekdayLabel('1969-12-31'), '수');
+  assert.equal(weekdayLabel('2026-11-5x'), '');
+  // 기준일의 요일은 14일 간격으로 이어지는 모든 급여일과 같다
+  biweeklyPaydays('2026-12', '2026-11-06').forEach((d) => assert.equal(weekdayLabel(d), '금'));
 });
 
 test('2주급 규칙 문자열', () => {

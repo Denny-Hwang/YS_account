@@ -106,6 +106,8 @@ declare module '@shared/LedgerRules.js' {
     transactions: Array<{ index: number; patch: Record<string, string> }>
     merchants: Array<{ index: number; patch: Record<string, string> }>
   }
+  /** 'YYYY-MM-DD' 의 요일 한 글자('일'~'토'). 날짜가 아니면 빈 문자열. */
+  export function weekdayLabel(ymd: string): string
   export interface PeriodReport {
     from: string
     to: string

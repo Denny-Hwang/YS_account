@@ -21,6 +21,7 @@ import {
   type SheetRow,
   type Workbook,
 } from '../lib/ledger'
+import { weekdayLabel } from '@shared/LedgerRules.js'
 import { incomePlan, paydaySlots, paydaysOf, perCheckOf, type PaydaySlot, type RecurringActual } from '../lib/metrics'
 import type { SheetsContext } from '../lib/sheets'
 import { TransactionEditSheet } from './LedgerScreen'
@@ -350,7 +351,9 @@ function PaydayList({
         const late = !done && slot.date < today
         return (
           <div className="tx" key={slot.date}>
-            <span className="date">{(done && slot.row ? String(slot.row.date) : slot.date).slice(5, 10)}</span>
+            <span className="date" style={{ whiteSpace: 'nowrap' }}>
+              {(done && slot.row ? String(slot.row.date) : slot.date).slice(5, 10)} ({weekdayLabel((done && slot.row ? String(slot.row.date) : slot.date).slice(0, 10))})
+            </span>
             <span className="grow">
               <span className={`pill${done ? '' : ' pill-reserved'}`}>{SLOT_LABEL[slot.state]}</span>
               {late && <span className="meta"> 지남</span>}
