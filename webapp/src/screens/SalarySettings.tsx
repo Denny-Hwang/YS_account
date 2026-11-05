@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { formatUsd } from '@shared/Budget.js'
-import { biweeklyPaydays, biweeklyRuleString } from '@shared/LedgerRules.js'
+import { biweeklyPaydays, biweeklyRuleString, weekdayLabel } from '@shared/LedgerRules.js'
 import { Card, Empty, Field } from '../components/Ui'
 import { TABS, configNumber, isReserved, patchIn, patchTransaction, recurringTypeOf, shiftMonth, type SheetRow, type Workbook } from '../lib/ledger'
 import { perCheckOf } from '../lib/metrics'
@@ -93,7 +93,7 @@ function SalaryForm({ row, workbook, ctx, today, onChanged }: { row: SheetRow; w
     <div style={{ marginBottom: 12 }}>
       <p className="meta" style={{ marginTop: 0 }}>
         <strong>{name}</strong>
-        {current ? ` · 지금 1회 ${formatUsd(current)}, 기준일 ${anchorOf(row)}` : ' · 아직 2주급이 아닙니다. 저장하면 2주급으로 바뀝니다.'}
+        {current ? ` · 지금 1회 ${formatUsd(current)}, 기준일 ${anchorOf(row)} (${weekdayLabel(anchorOf(row))})` : ' · 아직 2주급이 아닙니다. 저장하면 2주급으로 바뀝니다.'}
       </p>
       <Field label="1회 금액 (평균, 인상·승진 때 고치세요)">
         <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="예: 3000" />
@@ -101,7 +101,8 @@ function SalaryForm({ row, workbook, ctx, today, onChanged }: { row: SheetRow; w
       <Field label="기준 급여일 (실제로 받은 날 하나, 2주 간격으로 셉니다)">
         <input type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} />
       </Field>
-      {preview.length > 0 && <p className="meta">다음 급여일: {preview.map((d) => d.slice(5)).join(', ')}</p>}
+      {anchor && weekdayLabel(anchor) && <p className="meta" style={{ marginTop: 6 }}>{anchor} 은 {weekdayLabel(anchor)}요일입니다.</p>}
+      {preview.length > 0 && <p className="meta">다음 급여일: {preview.map((d) => `${d.slice(5)}(${weekdayLabel(d)})`).join(', ')}</p>}
       <div className="actions">
         <button className="primary" onClick={() => void save()} disabled={busy}>
           급여 저장

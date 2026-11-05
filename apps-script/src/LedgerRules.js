@@ -245,6 +245,15 @@ function sourceMergePlan(from, to, transactions, merchants) {
   return out;
 }
 
+/** 'YYYY-MM-DD' 의 요일 한 글자('일'~'토'). 날짜가 아니면 빈 문자열. 1970-01-01 이 목요일이다. */
+function weekdayLabel(ymd) {
+  var n = rulesDayNumber(ymd);
+  if (n === null) {
+    return '';
+  }
+  return ['일', '월', '화', '수', '목', '금', '토'][(((n + 4) % 7) + 7) % 7];
+}
+
 /** 'YYYY-MM' 부터 'YYYY-MM' 까지 달 목록(양끝 포함). 형식이 틀리거나 거꾸로면 빈 배열. 최대 240개월. */
 function rulesMonthList(fromMonth, toMonth) {
   var a = /^(\d{4})-(\d{2})$/.exec(String(fromMonth || ''));
@@ -661,6 +670,7 @@ if (typeof module !== 'undefined') {
     biweeklyRuleString: biweeklyRuleString,
     sourceMergePlan: sourceMergePlan,
     periodReport: periodReport,
+    weekdayLabel: weekdayLabel,
     expectedAmountFor: expectedAmountFor,
     pickConfirmTarget: pickConfirmTarget,
     recurringCertainty: recurringCertainty,
